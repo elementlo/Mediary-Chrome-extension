@@ -33,6 +33,11 @@ test("captures wrapped HLS redirect and clears results after navigation", async 
   assert.deepEqual(data.get("tab:7").map(item => item.url), [entry]);
   assert.equal(data.get("tab:7")[0].wrappedUrl, cdn);
 
+  const video = "https://cdn.example.com/movie.mp4?signature=abc";
+  listeners.request({ tabId: 7, requestId: "r3", url: video, initiator: "https://example.com" });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(data.get("tab:7")[0].kind, "video");
+
   listeners.updated(7, { url: "https://example.com/another-video" });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(data.has("tab:7"), false);

@@ -15,12 +15,15 @@ export function classifyUrl(rawUrl) {
   if (/\/api\/hls\/[^/]+\/?$/i.test(url.pathname) &&
       url.searchParams.get("kind") !== "thumbs") return "wrapped-hls";
   if (/\.m3u8$/i.test(url.pathname)) return "hls";
+  if (/\.(?:mp4|m4v|webm|mkv|mov|avi|flv)$/i.test(url.pathname)) return "video";
   return null;
 }
 
 export function classifyHeaders(headers = []) {
   const type = headers.find(header => header.name.toLowerCase() === "content-type")?.value;
-  return HLS_MIME.has(type?.split(";", 1)[0].trim().toLowerCase()) ? "hls" : null;
+  const mime = type?.split(";", 1)[0].trim().toLowerCase();
+  if (HLS_MIME.has(mime)) return "hls";
+  return ["video/mp4", "video/webm", "video/x-matroska", "video/quicktime", "video/x-msvideo", "video/x-flv"].includes(mime) ? "video" : null;
 }
 
 export function isSignedPngRedirect(entryUrl, targetUrl) {

@@ -15,6 +15,13 @@ test("recognizes ordinary HLS by extension and MIME", () => {
   assert.equal(classifyHeaders([{ name: "Content-Type", value: "image/png" }]), null);
 });
 
+test("recognizes direct video addresses and MIME types", () => {
+  assert.equal(classifyUrl("https://cdn.example.com/movie.mp4?sig=abc"), "video");
+  assert.equal(classifyUrl("https://cdn.example.com/segment.ts"), null);
+  assert.equal(classifyHeaders([{ name: "Content-Type", value: "video/mp4; charset=binary" }]), "video");
+  assert.equal(classifyHeaders([{ name: "Content-Type", value: "image/png" }]), null);
+});
+
 test("only links PNG redirect to a wrapped HLS entry", () => {
   const entry = "https://example.com/api/hls/id";
   assert.equal(isSignedPngRedirect(entry, "https://cdn.example.com/media.png?v=1&exp=2&auth=3"), true);

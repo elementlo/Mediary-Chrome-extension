@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "HLS Stream Link Detector",
-  "version": "1.0.0",
-  "description": "Detect HLS streams, unwrap PNG media through a local proxy, and copy a playable m3u8 URL.",
-  "permissions": ["webRequest", "storage", "tabs"],
+  "name": "Video Stream Link Detector",
+  "version": "1.1.0",
+  "description": "Detect video and HLS streams, unwrap PNG media through a local proxy, and copy downloadable links.",
+  "permissions": ["webRequest", "storage", "tabs", "clipboardWrite"],
   "host_permissions": ["http://*/*", "https://*/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_title": "Detected HLS streams", "default_popup": "popup.html" }
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["overlay.js"], "all_frames": true, "run_at": "document_idle" }],
+  "action": { "default_title": "Detected video streams", "default_popup": "popup.html" }
 }

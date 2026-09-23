@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HLS 视频地址</title>
+  <title>视频下载地址</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
-    <h1>检测到的 HLS 地址</h1>
+    <h1>检测到的视频地址</h1>
     <p id="status">正在读取当前标签页…</p>
     <div id="entries"></div>
-    <p class="hint">需要先在终端运行 <code>python3 hls_proxy.py</code>。生成的 m3u8 地址仅在本机代理运行时有效；源站签名过期后需重新生成。</p>
+    <p class="hint" id="hint"></p>
   </main>
   <script type="module" src="popup.js"></script>
 </body>

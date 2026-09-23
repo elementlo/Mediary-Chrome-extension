@@ -18,6 +18,7 @@ function save(tabId, candidate) {
     await chrome.storage.session.set({ [storageKey]: entries });
     await chrome.action.setBadgeText({ tabId, text: String(entries.length) });
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#147d61" });
+    void chrome.tabs.sendMessage?.(tabId, { type: "candidatesChanged" }).catch(() => {});
   });
   writes.set(tabId, write);
   void write.then(
@@ -52,10 +53,11 @@ chrome.webRequest.onBeforeRedirect.addListener(details => {
 }, { urls: ["http://*/*", "https://*/*"] });
 
 chrome.webRequest.onHeadersReceived.addListener(details => {
-  if (details.tabId < 0 || !classifyHeaders(details.responseHeaders)) return;
+  const kind = classifyHeaders(details.responseHeaders);
+  if (details.tabId < 0 || !kind) return;
   void save(details.tabId, {
     url: details.url,
-    kind: "hls",
+    kind,
     pageUrl: details.initiator || "",
     seenAt: Date.now()
   });
@@ -76,6 +78,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   const clear = previous.catch(() => {}).then(async () => {
     await chrome.storage.session.remove(key(tabId));
     await chrome.action.setBadgeText({ tabId, text: "" });
+    void chrome.tabs.sendMessage?.(tabId, { type: "candidatesChanged" }).catch(() => {});
   });
   writes.set(tabId, clear);
   void clear.then(
@@ -85,10 +88,38 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "getCandidates" || !Number.isInteger(message.tabId)) return;
-  const storageKey = key(message.tabId);
-  chrome.storage.session.get(storageKey).then(data => {
-    sendResponse({ entries: data[storageKey] || [] });
-  }).catch(error => sendResponse({ error: String(error) }));
-  return true;
+  if (message?.type === "getCandidates" && Number.isInteger(message.tabId)) {
+    const storageKey = key(message.tabId);
+    chrome.storage.session.get(storageKey).then(data => {
+      sendResponse({ entries: data[storageKey] || [] });
+    }).catch(error => sendResponse({ error: String(error) }));
+    return true;
+  }
+  if (message?.type === "getFrameCandidates") {
+    const tabId = _sender.tab?.id;
+    if (!Number.isInteger(tabId)) return;
+    const storageKey = key(tabId);
+    chrome.storage.session.get(storageKey).then(data => {
+      sendResponse({ entries: data[storageKey] || [] });
+    }).catch(error => sendResponse({ error: String(error) }));
+    return true;
+  }
+  if (message?.type === "resolveAddress") {
+    const entry = message.entry;
+    if (!entry || typeof entry.url !== "string") return;
+    if (entry.kind !== "wrapped-hls") {
+      sendResponse({ url: entry.url });
+      return;
+    }
+    fetch("http://127.0.0.1:8765/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...entry, userAgent: message.userAgent || "" })
+    }).then(async response => {
+      const result = await response.json();
+      if (!response.ok || !result.url) throw new Error(result.error || "解析失败");
+      sendResponse({ url: result.url });
+    }).catch(error => sendResponse({ error: String(error) }));
+    return true;
+  }
 });
