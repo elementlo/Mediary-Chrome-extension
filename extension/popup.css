@@ -1,0 +1,13 @@
+body { width: 370px; margin: 0; font: 13px system-ui, sans-serif; color: #18252b; background: #f6f9f8; }
+main { padding: 16px; }
+h1 { margin: 0 0 12px; font-size: 17px; }
+p { line-height: 1.45; }
+.hint { color: #5c6971; font-size: 11px; margin-bottom: 0; }
+.card { background: white; border: 1px solid #d9e3e0; border-radius: 8px; padding: 11px; margin: 9px 0; }
+.label { font-weight: 650; margin-bottom: 4px; }
+.url { overflow-wrap: anywhere; color: #54646d; font-size: 11px; margin-bottom: 8px; }
+.actions { display: flex; gap: 7px; }
+button { border: 0; background: #147d61; color: white; border-radius: 5px; padding: 7px 10px; cursor: pointer; }
+button:disabled { opacity: .75; cursor: default; }
+button.secondary { background: #e7f2ee; color: #145640; }
+button:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
