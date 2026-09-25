@@ -1,5 +1,26 @@
 const overlays = new Map();
 let entries = [];
+let pointer = null;
+let updateQueued = false;
+
+function scheduleOverlayUpdate() {
+  if (updateQueued) return;
+  updateQueued = true;
+  requestAnimationFrame(() => {
+    updateQueued = false;
+    updateOverlays();
+  });
+}
+
+function containsPoint(rect, point) {
+  return point && point.x >= rect.left && point.x < rect.right &&
+    point.y >= rect.top && point.y < rect.bottom;
+}
+
+function hideOverlay(overlay) {
+  overlay.panel.classList.remove("open");
+  overlay.host.style.display = "none";
+}
 
 function matchingEntries() {
   return entries.filter(entry => {
@@ -49,7 +70,7 @@ async function copyEntry(entry, button) {
 }
 
 function downloadLink(entry) {
-  const source = new URL(entry.url);
+  const source = new URL(preferredDownloadUrl(entry));
   if (!["http:", "https:"].includes(source.protocol)) throw new Error("无效的视频地址");
   const link = new URL("stream-mediary://download");
   link.searchParams.set("url", source.href);
@@ -59,6 +80,10 @@ function downloadLink(entry) {
   }
   link.searchParams.set("userAgent", navigator.userAgent);
   return link.href;
+}
+
+function preferredDownloadUrl(entry) {
+  return entry.kind === "wrapped-hls" && entry.wrappedUrl ? entry.wrappedUrl : entry.url;
 }
 
 function createOverlay(video) {
@@ -124,7 +149,7 @@ function renderPanel(overlay, candidates) {
         launch.className = "launch";
         launch.textContent = "在 Mediary 中下载";
         launch.href = downloadLink(entry);
-        launch.addEventListener("click", () => copyBeforeLaunch(entry.url));
+        launch.addEventListener("click", () => copyBeforeLaunch(preferredDownloadUrl(entry)));
         item.append(launch);
       } catch { /* Ignore an invalid detected address. */ }
     }
@@ -148,7 +173,7 @@ function updateOverlays() {
     }
   }
   if (!candidates.length) {
-    for (const overlay of overlays.values()) overlay.host.style.display = "none";
+    for (const overlay of overlays.values()) hideOverlay(overlay);
     return;
   }
   for (const video of videos) {
@@ -157,12 +182,19 @@ function updateOverlays() {
       rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
     let overlay = overlays.get(video);
     if (!visible) {
-      if (overlay) overlay.host.style.display = "none";
+      if (overlay) hideOverlay(overlay);
+      continue;
+    }
+    const hoveringVideo = containsPoint(rect, pointer);
+    const hoveringMenu = overlay && overlay.host.style.display !== "none" &&
+      containsPoint(overlay.host.getBoundingClientRect(), pointer);
+    if (!hoveringVideo && !hoveringMenu) {
+      if (overlay) hideOverlay(overlay);
       continue;
     }
     if (!overlay) overlay = createOverlay(video);
     overlay.host.style.display = "block";
-    overlay.host.style.left = `${Math.max(4, Math.min(innerWidth - 120, rect.right - 112))}px`;
+    overlay.host.style.left = `${Math.max(4, Math.min(innerWidth - 280, rect.right - 112))}px`;
     overlay.host.style.top = `${Math.max(4, rect.top + 8)}px`;
     const signature = JSON.stringify(candidates);
     if (overlay.signature !== signature) {
@@ -190,6 +222,25 @@ async function refreshEntries() {
 
 chrome.runtime.onMessage.addListener(message => {
   if (message?.type === "candidatesChanged") void refreshEntries();
+});
+document.addEventListener("pointermove", event => {
+  if (event.pointerType !== "mouse") return;
+  pointer = { x: event.clientX, y: event.clientY };
+  scheduleOverlayUpdate();
+}, true);
+document.addEventListener("pointerdown", event => {
+  const path = event.composedPath();
+  for (const overlay of overlays.values()) {
+    if (!path.includes(overlay.host)) overlay.panel.classList.remove("open");
+  }
+}, true);
+document.documentElement.addEventListener("mouseleave", () => {
+  pointer = null;
+  scheduleOverlayUpdate();
+});
+window.addEventListener("blur", () => {
+  pointer = null;
+  scheduleOverlayUpdate();
 });
 void refreshEntries();
 setInterval(updateOverlays, 750);

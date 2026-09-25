@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Video Stream Link Detector",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Detect video and HLS streams and open them in Stream Mediary on macOS or Windows.",
   "permissions": ["webRequest", "storage", "tabs", "clipboardWrite"],
   "host_permissions": ["http://*/*", "https://*/*"],

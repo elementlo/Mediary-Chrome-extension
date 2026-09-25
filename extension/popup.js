@@ -1,4 +1,4 @@
-import { buildDownloadLink } from "./launch.js";
+import { buildDownloadLink, preferredDownloadUrl } from "./launch.js";
 
 const status = document.querySelector("#status");
 const container = document.querySelector("#entries");
@@ -49,7 +49,7 @@ function render(entry) {
       launch.href = buildDownloadLink(entry, navigator.userAgent);
       launch.addEventListener("click", () => {
         // Keep the source usable when the desktop app is absent.
-        copyBeforeLaunch(entry.url);
+        copyBeforeLaunch(preferredDownloadUrl(entry));
       });
       actions.append(launch);
     } catch { /* Ignore an invalid detected address. */ }

@@ -18,3 +18,14 @@ test("passes HLS entry, referer and browser user agent to Mediary", () => {
 test("rejects a non-HTTP source", () => {
   assert.throws(() => buildDownloadLink({ url: "file:///tmp/movie" }));
 });
+
+test("opens the captured signed PNG instead of refetching the HLS entry", () => {
+  const deepLink = new URL(buildDownloadLink({
+    url: "https://rou.video/api/hls/abc",
+    wrappedUrl: "https://cdn.example/master.png?sig=abc",
+    pageUrl: "https://rou.video/v/abc",
+    kind: "wrapped-hls"
+  }, "Chrome/1"));
+  assert.equal(deepLink.searchParams.get("url"), "https://cdn.example/master.png?sig=abc");
+  assert.equal(deepLink.searchParams.get("referer"), "https://rou.video/v/abc");
+});
