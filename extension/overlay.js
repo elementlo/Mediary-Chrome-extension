@@ -24,25 +24,41 @@ async function copyText(value) {
   if (!copied) throw new Error("浏览器拒绝写入剪贴板");
 }
 
+function copyBeforeLaunch(value) {
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.cssText = "position:fixed;left:-10000px;top:0";
+  document.documentElement.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) void navigator.clipboard.writeText(value).catch(() => {});
+}
+
 async function copyEntry(entry, button) {
   button.disabled = true;
-  button.textContent = entry.kind === "wrapped-hls" ? "正在解包…" : "正在复制…";
+  button.textContent = "正在复制…";
   try {
-    if (entry.kind === "wrapped-hls") {
-      const result = await chrome.runtime.sendMessage({
-        type: "resolveAddress", entry, userAgent: navigator.userAgent
-      });
-      if (!result?.url) throw new Error(result?.error || "未能生成地址");
-      await copyText(result.url);
-    } else {
-      await copyText(entry.url);
-    }
+    await copyText(entry.url);
     button.textContent = "已复制";
   } catch (error) {
     button.textContent = `失败：${error.message}`;
   } finally {
     button.disabled = false;
   }
+}
+
+function downloadLink(entry) {
+  const source = new URL(entry.url);
+  if (!["http:", "https:"].includes(source.protocol)) throw new Error("无效的视频地址");
+  const link = new URL("stream-mediary://download");
+  link.searchParams.set("url", source.href);
+  if (entry.pageUrl) {
+    const page = new URL(entry.pageUrl);
+    if (["http:", "https:"].includes(page.protocol)) link.searchParams.set("referer", page.href);
+  }
+  link.searchParams.set("userAgent", navigator.userAgent);
+  return link.href;
 }
 
 function createOverlay(video) {
@@ -53,9 +69,9 @@ function createOverlay(video) {
   const style = document.createElement("style");
   style.textContent = `
     * { box-sizing: border-box; }
-    .toggle, .copy { border:0; border-radius:6px; background:#147d61; color:white;
+    .toggle, .copy, .launch { border:0; border-radius:6px; background:#147d61; color:white;
       cursor:pointer; font:13px system-ui,sans-serif; padding:8px 11px; box-shadow:0 2px 10px #0005; }
-    .toggle:hover, .copy:hover { background:#0f624b; }
+    .toggle:hover, .copy:hover, .launch:hover { background:#0f624b; }
     .panel { display:none; width:270px; max-height:240px; overflow:auto; margin-top:5px;
       padding:9px; background:#fff; border:1px solid #cad9d3; border-radius:8px;
       box-shadow:0 4px 18px #0005; color:#18252b; font:12px system-ui,sans-serif; }
@@ -64,7 +80,7 @@ function createOverlay(video) {
     .item:last-child { border-bottom:0; }
     .kind { font-weight:650; margin-bottom:3px; }
     .url { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:5px; color:#56636a; }
-    .copy { padding:5px 8px; box-shadow:none; }
+    .copy, .launch { padding:5px 8px; box-shadow:none; display:inline-block; text-decoration:none; margin-right:5px; }
     .copy:disabled { opacity:.65; }
     .hint { line-height:1.4; color:#52616a; padding:5px 2px; }
   `;
@@ -99,15 +115,25 @@ function renderPanel(overlay, candidates) {
     const copy = document.createElement("button");
     copy.className = "copy";
     copy.type = "button";
-    copy.textContent = "复制可下载地址";
+    copy.textContent = "复制源地址";
     copy.addEventListener("click", () => void copyEntry(entry, copy));
     item.append(kind, url, copy);
+    if (entry.kind !== "video") {
+      try {
+        const launch = document.createElement("a");
+        launch.className = "launch";
+        launch.textContent = "在 Mediary 中下载";
+        launch.href = downloadLink(entry);
+        launch.addEventListener("click", () => copyBeforeLaunch(entry.url));
+        item.append(launch);
+      } catch { /* Ignore an invalid detected address. */ }
+    }
     panel.append(item);
   }
   if (candidates.some(entry => entry.kind === "wrapped-hls")) {
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = "PNG 包装的 HLS 复制为本机 m3u8 地址，下载期间需保持 hls_proxy.py 运行。";
+    hint.textContent = "Mediary 可直接解包 PNG HLS，无需本地代理；打开下载器时会复制源地址。";
     panel.append(hint);
   }
 }

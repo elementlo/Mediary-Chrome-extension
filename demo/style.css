@@ -1,0 +1,16 @@
+:root { font-family: system-ui, -apple-system, sans-serif; color: #e8eef6; background: #101827; }
+body { margin: 0; }
+main { max-width: 760px; padding: 48px 22px; margin: auto; }
+.eyebrow { color: #73d7ad; font-weight: 700; letter-spacing: .12em; }
+h1 { font-size: clamp(28px, 5vw, 42px); margin: 8px 0 14px; }
+p, li { line-height: 1.6; color: #c4cfdd; }
+code { color: #b5e5cf; background: #1d3040; border-radius: 4px; padding: 2px 5px; }
+.player { background: #05090e; border: 1px solid #33465a; border-radius: 12px; overflow: hidden; }
+video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.actions { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+button { border: 0; border-radius: 8px; padding: 11px 16px; background: #48bd88; color: #092219; font: inherit; font-weight: 700; cursor: pointer; }
+button.secondary { background: #293d50; color: #e5eff8; }
+button:disabled { cursor: wait; opacity: .6; }
+#status { min-height: 24px; }
+ol { padding-left: 22px; margin-top: 26px; }
+.note { font-size: 13px; color: #8da0b5; }

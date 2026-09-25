@@ -7,7 +7,7 @@ p { line-height: 1.45; }
 .label { font-weight: 650; margin-bottom: 4px; }
 .url { overflow-wrap: anywhere; color: #54646d; font-size: 11px; margin-bottom: 8px; }
 .actions { display: flex; gap: 7px; }
-button { border: 0; background: #147d61; color: white; border-radius: 5px; padding: 7px 10px; cursor: pointer; }
+button, a.button { border: 0; background: #147d61; color: white; border-radius: 5px; padding: 7px 10px; cursor: pointer; font: inherit; text-decoration: none; }
 button:disabled { opacity: .75; cursor: default; }
 button.secondary { background: #e7f2ee; color: #145640; }
 button:focus-visible { outline: 2px solid #111; outline-offset: 2px; }

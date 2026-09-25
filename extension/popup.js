@@ -1,23 +1,18 @@
+import { buildDownloadLink } from "./launch.js";
+
 const status = document.querySelector("#status");
 const container = document.querySelector("#entries");
 const hint = document.querySelector("#hint");
-const isWindows = /win/i.test(navigator.userAgentData?.platform || navigator.platform);
 
-async function copyAddress(entry) {
-  if (entry.kind !== "wrapped-hls") return entry.url;
-  let response;
-  try {
-    response = await fetch("http://127.0.0.1:8765/sources", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...entry, userAgent: navigator.userAgent })
-    });
-  } catch {
-    throw new Error("无法连接本机 HLS 代理");
-  }
-  const result = await response.json();
-  if (!response.ok || !result.url) throw new Error(result.error || "解析失败");
-  return result.url;
+function copyBeforeLaunch(value) {
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.style.cssText = "position:fixed;left:-10000px;top:0";
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) void navigator.clipboard.writeText(value).catch(() => {});
 }
 
 function render(entry) {
@@ -32,14 +27,12 @@ function render(entry) {
   const actions = document.createElement("div");
   actions.className = "actions";
   const button = document.createElement("button");
-  button.textContent = entry.kind === "wrapped-hls" ? "生成并复制可下载地址" : "复制可下载地址";
+  button.textContent = "复制源地址";
   button.addEventListener("click", async () => {
     button.disabled = true;
-    button.textContent = entry.kind === "wrapped-hls" ? "正在解包…" : "正在复制…";
+    button.textContent = "正在复制…";
     try {
-      const address = await copyAddress(entry);
-      await navigator.clipboard.writeText(address);
-      url.textContent = address;
+      await navigator.clipboard.writeText(entry.url);
       button.textContent = "已复制（点击可再次复制）";
     } catch (error) {
       button.textContent = `失败：${error.message}`;
@@ -48,6 +41,19 @@ function render(entry) {
     }
   });
   actions.append(button);
+  if (entry.kind !== "video") {
+    const launch = document.createElement("a");
+    launch.className = "button";
+    launch.textContent = "在 Mediary 中下载";
+    try {
+      launch.href = buildDownloadLink(entry, navigator.userAgent);
+      launch.addEventListener("click", () => {
+        // Keep the source usable when the desktop app is absent.
+        copyBeforeLaunch(entry.url);
+      });
+      actions.append(launch);
+    } catch { /* Ignore an invalid detected address. */ }
+  }
   card.append(label, url, actions);
   container.append(card);
 }
@@ -78,7 +84,7 @@ try {
     ? `找到 ${entries.length} 个视频或流。`
     : "尚未检测到视频。请开始播放后重新打开。";
   if (entries.some(entry => entry.kind === "wrapped-hls")) {
-    hint.textContent = `PNG 包装的 HLS 需先运行 ${isWindows ? "start_proxy_windows.cmd" : "python3 hls_proxy.py"}；复制出的 127.0.0.1 地址仅在代理运行时有效。`;
+    hint.textContent = "PNG 包装的 HLS 由 Mediary 直接解包下载，无需本地代理。打开下载器时也会复制源地址；未安装时可粘贴该地址。";
   } else {
     hint.remove();
   }

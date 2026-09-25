@@ -104,22 +104,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }).catch(error => sendResponse({ error: String(error) }));
     return true;
   }
-  if (message?.type === "resolveAddress") {
-    const entry = message.entry;
-    if (!entry || typeof entry.url !== "string") return;
-    if (entry.kind !== "wrapped-hls") {
-      sendResponse({ url: entry.url });
-      return;
-    }
-    fetch("http://127.0.0.1:8765/sources", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...entry, userAgent: message.userAgent || "" })
-    }).then(async response => {
-      const result = await response.json();
-      if (!response.ok || !result.url) throw new Error(result.error || "解析失败");
-      sendResponse({ url: result.url });
-    }).catch(error => sendResponse({ error: String(error) }));
-    return true;
-  }
 });

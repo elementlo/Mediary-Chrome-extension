@@ -1,6 +1,6 @@
 # Video Stream Link Detector
 
-This workspace contains a locally extracted IDM Integration Module CRX, a Chrome Manifest V3 extension, and a local HLS proxy for PNG-wrapped streams on Windows and macOS.
+This workspace contains a locally extracted IDM Integration Module CRX, a Chrome Manifest V3 extension, and an optional legacy HLS proxy. The extension integrates with [Stream Mediary](https://github.com/elementlo/stream-mediary) on macOS and Windows.
 
 ## Source analysis
 
@@ -13,19 +13,21 @@ This workspace contains a locally extracted IDM Integration Module CRX, a Chrome
 
 The local analysis in `/Users/element/Documents/网页播放机制分析.md` identifies a playback route: `GET /api/hls/<id>` redirects to a signed CDN `.png`; the PNG contains a private `roUd` chunk with an HLS manifest or segment. `extension/` detects the entry request and associates its `.png` redirect with that entry. It also detects ordinary `.m3u8` URLs, HLS response MIME types, and common video file URLs/MIME types. It intentionally ignores `/api/hls/<id>?kind=thumbs` and `/api/v/<id>/play`.
 
-Chrome `webRequest` does not expose response bodies. For PNG-wrapped streams only, the extension sends the detected entry and CDN URL to `hls_proxy.py`, which fetches the source, parses PNG chunks, extracts `roUd`, and inflates payloads whose flag bit 0 is set. It verifies the payload starts with `#EXTM3U` and probes one media segment before returning a local `http://127.0.0.1:8765/hls/<token>/index.m3u8` address. The proxy rewrites playlist, segment, and key URLs to itself and unwraps subsequent PNG responses on request. Relative CDN paths inherit the playlist's signature query when they have no query of their own. It also passes through normal HLS resources and handles byte range requests after decoding. On a `rou.video/v/<id>` page, the toolbar popup can construct the documented API entry if it missed the initial request; that entry is still validated by the proxy before copying a URL.
+Chrome `webRequest` does not expose response bodies. The extension therefore passes the original HTTP(S) HLS entry to Stream Mediary through the `stream-mediary://download` desktop protocol. It includes the page URL as `Referer` and the browser User-Agent. Mediary follows the signed redirect, extracts `roUd` from PNG manifests, segments and keys, inherits the CDN signature for relative references, and merges the decoded media. No local proxy is needed. On a `rou.video/v/<id>` page, the toolbar popup can construct the API entry if it missed the initial request.
 
-This is a genuine HTTP `.m3u8` URL that media players and HLS downloaders on the same computer can request while the proxy runs. It is not a standalone remote media address; copying it to another computer will not work. Source signatures can expire. If the CDN requires additional browser-only authentication, the proxy reports a failure rather than returning an unusable URL. This implementation has not been verified against the live Rou site because the analysis document contains no reusable test media URL.
+The copied link is the original HTTP(S) source, which Stream Mediary can interpret. It is not an ordinary `.m3u8` URL for generic downloaders. The old `hls_proxy.py` remains available for those downloaders. Source signatures can expire, and a site requiring browser-only authentication may still reject Mediary's requests. The implementation has been verified with a synthetic wrapped HLS server, not a live Rou session.
 
 ## Install and use
 
-1. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `extension/` directory.
-2. Play a video. A **视频地址** button appears beside visible video elements after detection. Click it, then choose **复制可下载地址** for the desired entry. The toolbar popup remains available as a fallback.
-3. Direct video and ordinary HLS addresses are copied directly. For a PNG-wrapped HLS stream, first run `start_proxy_windows.cmd` on Windows or `python3 hls_proxy.py` on macOS. Python's standard library is sufficient. Keep it running during the HLS download.
-4. Paste the address into a downloader on the same computer. A copied `127.0.0.1` address works only while the local proxy is running. Signed source URLs may expire.
+For a reproducible local playback test, run `python3 demo/server.py --port 8090` (requires ffmpeg) and open [the demo page](http://127.0.0.1:8090/v/demo) in Chrome. Click **加载并播放**, then use the extension's **在 Mediary 中下载** action. See [demo instructions](demo/README.md).
 
-Chrome asks for access to HTTP/HTTPS sites because the stream host is not known in advance. The extension stores detected URLs in `chrome.storage.session`, per tab, and removes them when the tab navigates or closes. The proxy binds only to `127.0.0.1`, keeps source URLs in memory, and never logs their signed query strings.
+1. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `extension/` directory.
+2. Install and launch the current Stream Mediary desktop build once so `stream-mediary://` is registered. On Windows, registration is written to the current user's registry at startup; on macOS, it comes from the app bundle's Info.plist.
+3. Play a video. A **视频地址** button appears beside visible video elements. Choose **在 Mediary 中下载** to open the desktop app with the source and request headers, or **复制源地址** to paste the source yourself. The toolbar popup offers the same actions.
+4. If the desktop app is unavailable, the open action also copies the original source. Chrome may still display its own external-protocol prompt or missing-handler error; extensions cannot reliably detect desktop app installation. For PNG-wrapped streams, paste the copied source into the updated Mediary app. Signed source URLs may expire.
+
+Chrome asks for access to HTTP/HTTPS sites because the stream host is not known in advance. The extension stores detected URLs in `chrome.storage.session`, per tab, and removes them when the tab navigates or closes. No local service is contacted by the extension.
 
 The extracted IDM package is Manifest V2 and cannot be relied on in current Chrome. This separate extension copies links on Windows and macOS; it does not download files through IDM or reproduce the proprietary IDM integration.
 
-Run `npm test` and `python3 -m unittest discover -s tests -p 'test_*.py' -v` for detection and local proxy tests.
+Run `npm test` for extension tests. The optional legacy proxy has Python tests under `tests/`.
