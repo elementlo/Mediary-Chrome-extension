@@ -104,10 +104,11 @@ chrome.tabs.onRemoved.addListener(tabId => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (!changeInfo.url) return;
+  if (!changeInfo.url && changeInfo.status !== "loading") return;
   const previous = writes.get(tabId) || Promise.resolve();
   const clear = previous.catch(() => {}).then(async () => {
     await chrome.storage.session.remove(key(tabId));
+    videoSizes.delete(tabId);
     await chrome.action.setBadgeText({ tabId, text: "" });
     void chrome.tabs.sendMessage?.(tabId, { type: "candidatesChanged" }).catch(() => {});
   });

@@ -68,15 +68,19 @@ function renderOption(option, index) {
   const spec = document.createElement("div");
   spec.className = "spec";
   spec.textContent = option.spec;
+  spec.title = option.spec;
+  const extra = option.details && option.details !== "原始媒体" ? option.details : "";
   const details = document.createElement("div");
   details.className = "details";
-  details.textContent = option.details;
-  details.title = option.details;
+  details.textContent = extra;
+  details.title = extra;
   const size = document.createElement("div");
   size.className = "size";
   size.textContent = formatSize(option.size, option.approximate);
 
-  card.append(radio, head, spec, details, size);
+  card.append(radio, head, spec);
+  if (extra) card.append(details);
+  card.append(size);
   cards.set(option.id, card);
   container.append(card);
   if (index === 0) selectOption(option);

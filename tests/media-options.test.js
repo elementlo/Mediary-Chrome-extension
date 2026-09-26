@@ -5,6 +5,7 @@ import {
   formatSize,
   inspectEntry,
   normalizeOptions,
+  stableUrl,
   parsePlaylist,
   resolveReference,
   responseSize,
@@ -100,6 +101,21 @@ test("fills missing resolution from the page video size", () => {
   const kept = applyResolution({ ...base, details: "4.5 Mbps · H.264" }, 1920, 1080);
   assert.equal(kept.details, "1920×1080 · 4.5 Mbps · H.264");
   assert.equal(applyResolution({ ...base, height: 720 }, 1920, 1080).height, 720);
+});
+
+test("deduplicates signed URLs that point to the same spec", () => {
+  assert.equal(
+    stableUrl("https://cdn.example/a.png?exp=1&auth=2&v=3"),
+    "https://cdn.example/a.png?v=3"
+  );
+  const base = { kind: "wrapped-hls", spec: "1080p", height: 1080, bandwidth: 0, seenAt: 1, details: "原始媒体" };
+  const first = { ...base, id: "a", downloadUrl: "https://cdn.example/v.png?exp=1&auth=a" };
+  const second = { ...base, id: "b", downloadUrl: "https://cdn.example/v.png?exp=2&auth=b", size: 2048 };
+  const merged = normalizeOptions([[first], [second]]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].size, 2048);
+  const distinct = normalizeOptions([[first], [{ ...second, height: 720, spec: "720p" }]]);
+  assert.equal(distinct.length, 2);
 });
 
 test("normalizes duplicate options and formats sizes", () => {

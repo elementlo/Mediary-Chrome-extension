@@ -297,12 +297,31 @@ export async function inspectEntry(entry, fetcher = fetch) {
   }));
 }
 
+const VOLATILE_PARAM = /^(?:exp|expires|expire|signature|sig|sign|token|auth|auth_key|access_key|policy|nonce|session|st|e|sp|sv|se|sr|ts|x-amz-.*|x-oss-.*)$/i;
+
+export function stableUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const kept = new URLSearchParams();
+    for (const [name, value] of parsed.searchParams) {
+      if (!VOLATILE_PARAM.test(name)) kept.append(name, value);
+    }
+    const query = kept.toString();
+    return `${parsed.origin}${parsed.pathname}${query ? `?${query}` : ""}`;
+  } catch { return url; }
+}
+
+export function optionKey(option) {
+  return `${option.kind}|${option.height || 0}|${option.bandwidth || 0}|${option.spec}|${stableUrl(option.downloadUrl)}`;
+}
+
 export function normalizeOptions(groups) {
   const unique = new Map();
   for (const option of groups.flat()) {
-    const current = unique.get(option.downloadUrl);
-    if (!current) unique.set(option.downloadUrl, option);
-    else unique.set(option.downloadUrl, {
+    const id = optionKey(option);
+    const current = unique.get(id);
+    if (!current) unique.set(id, option);
+    else unique.set(id, {
       ...current,
       ...option,
       size: current.size || option.size,

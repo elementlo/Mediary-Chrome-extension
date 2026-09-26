@@ -140,9 +140,8 @@ function createOverlay(video) {
     .check { display:grid; place-items:center; width:15px; height:15px;
       border:1.5px solid #cbd2df; border-radius:50%; color:transparent; font-size:10px; font-weight:800; }
     .option.selected .check { border-color:#4f46e5; background:#4f46e5; color:#fff; }
-    .spec { margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:750; }
-    .details { margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#667085; font-size:10px; }
-    .size { margin-top:3px; color:#344054; font-size:10px; font-weight:650; }
+    .spec { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:750; }
+    .meta { margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#344054; font-size:10px; font-weight:650; }
     .panel-actions { display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid #eef0f4; }
     .actions { display:flex; justify-content:flex-end; gap:6px; }
     .copy, .launch { display:inline-flex; align-items:center; justify-content:center; min-height:28px;
@@ -233,15 +232,13 @@ function renderPanel(overlay, candidates) {
     spec.className = "spec";
     spec.textContent = specText;
     spec.title = specText;
-    const details = document.createElement("div");
-    details.className = "details";
-    details.textContent = detailsText;
-    details.title = detailsText;
-    const size = document.createElement("div");
-    size.className = "size";
-    size.textContent = formatSize(option.size, option.approximate);
+    const extra = detailsText && detailsText !== "原始媒体" ? ` · ${detailsText}` : "";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `${formatSize(option.size, option.approximate)}${extra}`;
+    meta.title = meta.textContent;
 
-    card.append(radio, head, spec, details, size);
+    card.append(radio, head, spec, meta);
     panel.append(card);
   }
 
