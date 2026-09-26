@@ -11,7 +11,11 @@ test("recognizes wrapped HLS entry but excludes thumbnails and playback reports"
 
 test("recognizes ordinary HLS by extension and MIME", () => {
   assert.equal(classifyUrl("https://cdn.example.com/master.m3u8?token=abc"), "hls");
+  assert.equal(classifyUrl("https://cdn.example.com/play?format=m3u8"), "hls");
+  assert.equal(classifyUrl("https://cdn.example.com/proxy?url=https%3A%2F%2Fmedia.example%2Fmaster.m3u8%3Ftoken%3Dabc"), "hls");
   assert.equal(classifyHeaders([{ name: "Content-Type", value: "application/vnd.apple.mpegurl; charset=utf-8" }]), "hls");
+  assert.equal(classifyHeaders([{ name: "Content-Type", value: "application/x-m3u8" }]), "hls");
+  assert.equal(classifyHeaders([{ name: "Content-Type", value: "application/octet-stream" }, { name: "Content-Disposition", value: 'attachment; filename="master.m3u8"' }]), "hls");
   assert.equal(classifyHeaders([{ name: "Content-Type", value: "image/png" }]), null);
 });
 

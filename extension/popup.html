@@ -3,15 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>视频下载地址</title>
+  <title>媒体下载</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main>
-    <h1>检测到的视频地址</h1>
-    <p id="status">正在读取当前标签页…</p>
-    <div id="entries"></div>
-    <p class="hint" id="hint"></p>
+    <header class="header">
+      <span class="mark" aria-hidden="true">M</span>
+      <div>
+        <h1>选择下载规格</h1>
+        <p id="status" role="status">正在读取媒体信息…</p>
+      </div>
+    </header>
+    <div id="entries" class="entries" role="radiogroup" aria-label="可下载规格"></div>
+    <div id="empty" class="empty" hidden>播放视频后将在这里显示可下载规格</div>
+    <footer class="actions">
+      <button id="copy" type="button" disabled>复制链接</button>
+      <a id="download" class="button disabled" role="button" aria-disabled="true">Mediary 下载</a>
+    </footer>
   </main>
   <script type="module" src="popup.js"></script>
 </body>

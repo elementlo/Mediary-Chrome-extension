@@ -3,6 +3,9 @@ export function preferredDownloadUrl(entry) {
 }
 
 export function buildDownloadLink(entry, userAgent = "") {
+  if (entry?.kind !== "hls" && entry?.kind !== "wrapped-hls") {
+    throw new Error("Mediary 仅支持 HLS 流");
+  }
   const source = new URL(preferredDownloadUrl(entry));
   if (!["http:", "https:"].includes(source.protocol)) throw new Error("无效的视频地址");
   const link = new URL("stream-mediary://download");

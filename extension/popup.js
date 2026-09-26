@@ -1,8 +1,13 @@
 import { buildDownloadLink, preferredDownloadUrl } from "./launch.js";
+import { formatSize } from "./media-options.js";
 
 const status = document.querySelector("#status");
 const container = document.querySelector("#entries");
-const hint = document.querySelector("#hint");
+const empty = document.querySelector("#empty");
+const copyButton = document.querySelector("#copy");
+const downloadButton = document.querySelector("#download");
+const cards = new Map();
+let selected = null;
 
 function copyBeforeLaunch(value) {
   const field = document.createElement("textarea");
@@ -15,80 +20,114 @@ function copyBeforeLaunch(value) {
   if (!copied) void navigator.clipboard.writeText(value).catch(() => {});
 }
 
-function render(entry) {
-  const card = document.createElement("article");
-  card.className = "card";
-  const label = document.createElement("div");
-  label.className = "label";
-  label.textContent = entry.kind === "wrapped-hls" ? "PNG 包装的 HLS" : entry.kind === "video" ? "视频文件" : "HLS 清单";
-  const url = document.createElement("div");
-  url.className = "url";
-  url.textContent = entry.url;
-  const actions = document.createElement("div");
-  actions.className = "actions";
-  const button = document.createElement("button");
-  button.textContent = "复制源地址";
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    button.textContent = "正在复制…";
-    try {
-      await navigator.clipboard.writeText(entry.url);
-      button.textContent = "已复制（点击可再次复制）";
-    } catch (error) {
-      button.textContent = `失败：${error.message}`;
-    } finally {
-      button.disabled = false;
-    }
-  });
-  actions.append(button);
-  if (entry.kind !== "video") {
-    const launch = document.createElement("a");
-    launch.className = "button";
-    launch.textContent = "在 Mediary 中下载";
-    try {
-      launch.href = buildDownloadLink(entry, navigator.userAgent);
-      launch.addEventListener("click", () => {
-        // Keep the source usable when the desktop app is absent.
-        copyBeforeLaunch(preferredDownloadUrl(entry));
-      });
-      actions.append(launch);
-    } catch { /* Ignore an invalid detected address. */ }
+function selectOption(option) {
+  selected = option;
+  for (const [id, card] of cards) {
+    const active = id === option.id;
+    card.classList.toggle("selected", active);
+    card.querySelector("input").checked = active;
   }
-  card.append(label, url, actions);
-  container.append(card);
+  copyButton.disabled = false;
+  const canLaunch = option.kind === "hls" || option.kind === "wrapped-hls";
+  downloadButton.hidden = !canLaunch;
+  if (!canLaunch) {
+    downloadButton.removeAttribute("href");
+    return;
+  }
+  try {
+    downloadButton.href = buildDownloadLink(option.entry, navigator.userAgent);
+    downloadButton.classList.remove("disabled");
+    downloadButton.setAttribute("aria-disabled", "false");
+  } catch {
+    downloadButton.removeAttribute("href");
+    downloadButton.classList.add("disabled");
+    downloadButton.setAttribute("aria-disabled", "true");
+  }
 }
 
-function rouPageCandidate(pageUrl) {
-  try {
-    const page = new URL(pageUrl);
-    if (page.hostname !== "rou.video") return null;
-    const match = page.pathname.match(/^\/v\/([^/]+)\/?$/);
-    if (!match) return null;
-    return {
-      url: `${page.origin}/api/hls/${match[1]}`,
-      kind: "wrapped-hls",
-      pageUrl: page.href
-    };
-  } catch { return null; }
+function renderOption(option, index) {
+  const card = document.createElement("label");
+  card.className = "option";
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "media-option";
+  radio.value = option.id;
+  radio.addEventListener("change", () => selectOption(option));
+
+  const head = document.createElement("div");
+  head.className = "option-head";
+  const kind = document.createElement("span");
+  kind.className = `kind${option.kind === "video" ? " video" : ""}`;
+  kind.textContent = option.format;
+  const check = document.createElement("span");
+  check.className = "check";
+  check.setAttribute("aria-hidden", "true");
+  check.textContent = "✓";
+  head.append(kind, check);
+
+  const spec = document.createElement("div");
+  spec.className = "spec";
+  spec.textContent = option.spec;
+  const details = document.createElement("div");
+  details.className = "details";
+  details.textContent = option.details;
+  details.title = option.details;
+  const size = document.createElement("div");
+  size.className = "size";
+  size.textContent = formatSize(option.size, option.approximate);
+
+  card.append(radio, head, spec, details, size);
+  cards.set(option.id, card);
+  container.append(card);
+  if (index === 0) selectOption(option);
 }
+
+async function copySelected() {
+  if (!selected) return;
+  copyButton.disabled = true;
+  copyButton.textContent = "复制中…";
+  try {
+    await navigator.clipboard.writeText(preferredDownloadUrl(selected.entry));
+    copyButton.textContent = "已复制";
+  } catch {
+    copyButton.textContent = "复制失败";
+  } finally {
+    window.setTimeout(() => {
+      copyButton.textContent = "复制链接";
+      copyButton.disabled = !selected;
+    }, 900);
+  }
+}
+
+copyButton.addEventListener("click", () => void copySelected());
+downloadButton.addEventListener("click", event => {
+  if (!selected) {
+    event.preventDefault();
+    return;
+  }
+  copyBeforeLaunch(preferredDownloadUrl(selected.entry));
+});
 
 try {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error("无法读取当前标签页");
-  const response = await chrome.runtime.sendMessage({ type: "getCandidates", tabId: tab.id });
+  const response = await chrome.runtime.sendMessage({
+    type: "getOptions",
+    tabId: tab.id,
+    pageUrl: tab.url || ""
+  });
   if (response?.error) throw new Error(response.error);
-  const entries = response?.entries || [];
-  const fallback = rouPageCandidate(tab.url);
-  if (!entries.length && fallback) entries.push(fallback);
-  status.textContent = entries.length
-    ? `找到 ${entries.length} 个视频或流。`
-    : "尚未检测到视频。请开始播放后重新打开。";
-  if (entries.some(entry => entry.kind === "wrapped-hls")) {
-    hint.textContent = "PNG 包装的 HLS 由 Mediary 直接解包下载，无需本地代理。打开下载器时也会复制源地址；未安装时可粘贴该地址。";
+  const options = response?.options || [];
+  if (!options.length) {
+    status.textContent = "未检测到媒体";
+    empty.hidden = false;
   } else {
-    hint.remove();
+    options.forEach(renderOption);
+    status.textContent = `已找到 ${options.length} 个可下载规格`;
+    empty.hidden = true;
   }
-  entries.forEach(render);
-} catch (error) {
-  status.textContent = `读取失败：${error.message}`;
+} catch {
+  status.textContent = "读取失败，请重试";
+  empty.textContent = "无法读取当前页面的媒体信息";
+  empty.hidden = false;
 }

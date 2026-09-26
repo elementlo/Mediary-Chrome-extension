@@ -1,5 +1,6 @@
 const overlays = new Map();
-let entries = [];
+let overlaySeq = 0;
+let options = [];
 let pointer = null;
 let updateQueued = false;
 
@@ -17,15 +18,39 @@ function containsPoint(rect, point) {
     point.y >= rect.top && point.y < rect.bottom;
 }
 
+let reportedSize = null;
+function reportVideoSize(width, height) {
+  if (!width || !height) return;
+  if (reportedSize && reportedSize.width === width && reportedSize.height === height) return;
+  reportedSize = { width, height };
+  try {
+    void chrome.runtime.sendMessage({ type: "reportVideoSize", width, height }).catch(() => {});
+  } catch { /* The extension may be reloading. */ }
+}
+
 function hideOverlay(overlay) {
   overlay.panel.classList.remove("open");
   overlay.host.style.display = "none";
 }
 
-function matchingEntries() {
-  return entries.filter(entry => {
-    if (!entry.pageUrl) return true;
-    try { return new URL(entry.pageUrl).origin === location.origin; }
+function formatSize(bytes, approximate = false) {
+  if (!bytes || bytes <= 0) return "大小未知";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const digits = value >= 100 || unit === 0 ? 0 : 1;
+  return `${approximate ? "约 " : ""}${value.toFixed(digits)} ${units[unit]}`;
+}
+
+function matchingOptions() {
+  return options.filter(option => {
+    const pageUrl = option.entry?.pageUrl;
+    if (!pageUrl) return true;
+    try { return new URL(pageUrl).origin === location.origin; }
     catch { return true; }
   });
 }
@@ -56,14 +81,15 @@ function copyBeforeLaunch(value) {
   if (!copied) void navigator.clipboard.writeText(value).catch(() => {});
 }
 
-async function copyEntry(entry, button) {
+async function copyOption(option, button) {
+  if (!option) return;
   button.disabled = true;
-  button.textContent = "正在复制…";
+  button.textContent = "复制中…";
   try {
-    await copyText(entry.url);
+    await copyText(preferredDownloadUrl(option.entry));
     button.textContent = "已复制";
   } catch (error) {
-    button.textContent = `失败：${error.message}`;
+    button.textContent = "复制失败";
   } finally {
     button.disabled = false;
   }
@@ -94,78 +120,168 @@ function createOverlay(video) {
   const style = document.createElement("style");
   style.textContent = `
     * { box-sizing: border-box; }
-    .toggle, .copy, .launch { border:0; border-radius:6px; background:#147d61; color:white;
-      cursor:pointer; font:13px system-ui,sans-serif; padding:8px 11px; box-shadow:0 2px 10px #0005; }
-    .toggle:hover, .copy:hover, .launch:hover { background:#0f624b; }
-    .panel { display:none; width:270px; max-height:240px; overflow:auto; margin-top:5px;
-      padding:9px; background:#fff; border:1px solid #cad9d3; border-radius:8px;
-      box-shadow:0 4px 18px #0005; color:#18252b; font:12px system-ui,sans-serif; }
+    .toggle { border:1px solid #ffffff40; border-radius:999px; background:#1d2335e8;
+      color:white; cursor:pointer; font:600 12px system-ui,sans-serif; padding:7px 11px;
+      box-shadow:0 3px 14px #0005; backdrop-filter:blur(8px); }
+    .toggle:hover { background:#303954; }
+    .panel { display:none; width:260px; max-height:340px; overflow:auto; margin-top:6px;
+      padding:4px; background:#fff; border:1px solid #e3e7ef; border-radius:12px;
+      box-shadow:0 10px 32px #1018283d; color:#18212f; font:12px system-ui,sans-serif; }
     .panel.open { display:block; }
-    .item { padding:7px 2px; border-bottom:1px solid #e7eeeb; }
-    .item:last-child { border-bottom:0; }
-    .kind { font-weight:650; margin-bottom:3px; }
-    .url { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:5px; color:#56636a; }
-    .copy, .launch { padding:5px 8px; box-shadow:none; display:inline-block; text-decoration:none; margin-right:5px; }
-    .copy:disabled { opacity:.65; }
-    .hint { line-height:1.4; color:#52616a; padding:5px 2px; }
+    .option { display:block; position:relative; padding:7px 8px; border:1px solid #e3e7ef;
+      border-radius:9px; background:#fff; cursor:pointer; margin-bottom:5px; }
+    .option:last-of-type { margin-bottom:0; }
+    .option.selected { border-color:#4f46e5; box-shadow:0 0 0 2px #4f46e51a; }
+    .option input { position:absolute; width:1px; height:1px; opacity:0; }
+    .head { display:flex; align-items:center; justify-content:space-between; gap:7px; min-width:0; }
+    .kind { flex:none; padding:2px 6px; border-radius:5px; background:#eef0ff;
+      color:#4338ca; font-size:10px; font-weight:700; }
+    .kind.video { background:#edf7f3; color:#147d61; }
+    .check { display:grid; place-items:center; width:15px; height:15px;
+      border:1.5px solid #cbd2df; border-radius:50%; color:transparent; font-size:10px; font-weight:800; }
+    .option.selected .check { border-color:#4f46e5; background:#4f46e5; color:#fff; }
+    .spec { margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:750; }
+    .details { margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#667085; font-size:10px; }
+    .size { margin-top:3px; color:#344054; font-size:10px; font-weight:650; }
+    .panel-actions { display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid #eef0f4; }
+    .actions { display:flex; justify-content:flex-end; gap:6px; }
+    .copy, .launch { display:inline-flex; align-items:center; justify-content:center; min-height:28px;
+      padding:4px 9px; border:1px solid #dce1ec; border-radius:6px; background:#fff;
+      color:#344054; cursor:pointer; font:12px system-ui,sans-serif; text-decoration:none; }
+    .copy:hover { background:#f8f9fc; }
+    .launch { border-color:#4f46e5; background:#4f46e5; color:#fff; }
+    .launch:hover { background:#4338ca; }
+    .copy:disabled { opacity:.65; cursor:default; }
+    .copy[hidden], .launch[hidden] { display:none; }
+    .toggle:focus-visible, .copy:focus-visible, .launch:focus-visible { outline:2px solid #4f46e5; outline-offset:2px; }
   `;
   const toggle = document.createElement("button");
   toggle.className = "toggle";
-  toggle.textContent = "视频地址";
+  toggle.textContent = "视频链接";
   toggle.type = "button";
   const panel = document.createElement("div");
   panel.className = "panel";
   toggle.addEventListener("click", () => panel.classList.toggle("open"));
   shadow.append(style, toggle, panel);
   document.documentElement.append(host);
-  const overlay = { video, host, panel };
+  const overlay = { video, host, panel, selected: null, radioName: `media-option-${++overlaySeq}` };
   overlays.set(video, overlay);
   return overlay;
+}
+
+function selectOption(overlay, option) {
+  overlay.selected = option;
+  for (const card of overlay.panel.querySelectorAll(".option")) {
+    const input = card.querySelector("input");
+    const active = input.value === option.id;
+    card.classList.toggle("selected", active);
+    input.checked = active;
+  }
+  overlay.copyButton.disabled = false;
+  const canLaunch = option.kind === "hls" || option.kind === "wrapped-hls";
+  overlay.launchButton.hidden = !canLaunch;
+  if (!canLaunch) {
+    overlay.launchButton.removeAttribute("href");
+    return;
+  }
+  try {
+    overlay.launchButton.href = downloadLink(option.entry);
+  } catch {
+    overlay.launchButton.hidden = true;
+  }
 }
 
 function renderPanel(overlay, candidates) {
   const { panel } = overlay;
   panel.replaceChildren();
-  for (const entry of candidates) {
-    const item = document.createElement("div");
-    item.className = "item";
-    const kind = document.createElement("div");
-    kind.className = "kind";
-    kind.textContent = entry.kind === "wrapped-hls" ? "PNG 包装的 HLS" :
-      entry.kind === "hls" ? "HLS 清单" : "视频文件";
-    const url = document.createElement("div");
-    url.className = "url";
-    url.textContent = entry.url;
-    url.title = entry.url;
-    const copy = document.createElement("button");
-    copy.className = "copy";
-    copy.type = "button";
-    copy.textContent = "复制源地址";
-    copy.addEventListener("click", () => void copyEntry(entry, copy));
-    item.append(kind, url, copy);
-    if (entry.kind !== "video") {
-      try {
-        const launch = document.createElement("a");
-        launch.className = "launch";
-        launch.textContent = "在 Mediary 中下载";
-        launch.href = downloadLink(entry);
-        launch.addEventListener("click", () => copyBeforeLaunch(preferredDownloadUrl(entry)));
-        item.append(launch);
-      } catch { /* Ignore an invalid detected address. */ }
+  overlay.selected = null;
+
+  for (const option of candidates) {
+    const card = document.createElement("label");
+    card.className = "option";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = overlay.radioName;
+    radio.value = option.id;
+    radio.addEventListener("change", () => selectOption(overlay, option));
+
+    const head = document.createElement("div");
+    head.className = "head";
+    const kind = document.createElement("span");
+    kind.className = `kind${option.kind === "video" ? " video" : ""}`;
+    kind.textContent = option.format;
+    const check = document.createElement("span");
+    check.className = "check";
+    check.setAttribute("aria-hidden", "true");
+    check.textContent = "✓";
+    head.append(kind, check);
+
+    let specText = option.spec;
+    let detailsText = option.details;
+    if (!option.height) {
+      const width = overlay.video?.videoWidth || 0;
+      const height = overlay.video?.videoHeight || 0;
+      if (height) {
+        const resolution = width ? `${width}×${height}` : `${height}p`;
+        specText = `${height}p`;
+        detailsText = option.details && option.details !== "原始媒体"
+          ? `${resolution} · ${option.details}`
+          : resolution;
+      }
     }
-    panel.append(item);
+    const spec = document.createElement("div");
+    spec.className = "spec";
+    spec.textContent = specText;
+    spec.title = specText;
+    const details = document.createElement("div");
+    details.className = "details";
+    details.textContent = detailsText;
+    details.title = detailsText;
+    const size = document.createElement("div");
+    size.className = "size";
+    size.textContent = formatSize(option.size, option.approximate);
+
+    card.append(radio, head, spec, details, size);
+    panel.append(card);
   }
-  if (candidates.some(entry => entry.kind === "wrapped-hls")) {
-    const hint = document.createElement("div");
-    hint.className = "hint";
-    hint.textContent = "Mediary 可直接解包 PNG HLS，无需本地代理；打开下载器时会复制源地址。";
-    panel.append(hint);
-  }
+
+  const actions = document.createElement("div");
+  actions.className = "panel-actions";
+  const copy = document.createElement("button");
+  copy.className = "copy";
+  copy.type = "button";
+  copy.textContent = "复制链接";
+  copy.style.flex = "1";
+  copy.disabled = true;
+  copy.addEventListener("click", () => void copyOption(overlay.selected, copy));
+  const launch = document.createElement("a");
+  launch.className = "launch";
+  launch.textContent = "Mediary 下载";
+  launch.style.flex = "1";
+  launch.hidden = true;
+  launch.addEventListener("click", () => {
+    if (overlay.selected) copyBeforeLaunch(preferredDownloadUrl(overlay.selected.entry));
+  });
+  actions.append(copy, launch);
+  panel.append(actions);
+  overlay.copyButton = copy;
+  overlay.launchButton = launch;
+
+  if (candidates.length) selectOption(overlay, candidates[0]);
 }
 
 function updateOverlays() {
-  const candidates = matchingEntries();
+  const candidates = matchingOptions();
   const videos = new Set(document.querySelectorAll("video"));
+  let maxWidth = 0;
+  let maxHeight = 0;
+  for (const video of videos) {
+    if (video.videoWidth > maxWidth) {
+      maxWidth = video.videoWidth;
+      maxHeight = video.videoHeight;
+    }
+  }
+  reportVideoSize(maxWidth, maxHeight);
   for (const [video, overlay] of overlays) {
     if (!videos.has(video)) {
       overlay.host.remove();
@@ -194,9 +310,9 @@ function updateOverlays() {
     }
     if (!overlay) overlay = createOverlay(video);
     overlay.host.style.display = "block";
-    overlay.host.style.left = `${Math.max(4, Math.min(innerWidth - 280, rect.right - 112))}px`;
+    overlay.host.style.left = `${Math.max(4, Math.min(innerWidth - 270, rect.right - 112))}px`;
     overlay.host.style.top = `${Math.max(4, rect.top + 8)}px`;
-    const signature = JSON.stringify(candidates);
+    const signature = candidates.map(option => `${option.id}|${option.size}`).join(",");
     if (overlay.signature !== signature) {
       renderPanel(overlay, candidates);
       overlay.signature = signature;
@@ -206,16 +322,8 @@ function updateOverlays() {
 
 async function refreshEntries() {
   try {
-    const result = await chrome.runtime.sendMessage({ type: "getFrameCandidates" });
-    entries = result?.entries || [];
-    if (!entries.length && location.hostname === "rou.video") {
-      const match = location.pathname.match(/^\/v\/([^/]+)\/?$/);
-      if (match) entries = [{
-        url: `${location.origin}/api/hls/${match[1]}`,
-        kind: "wrapped-hls",
-        pageUrl: location.href
-      }];
-    }
+    const result = await chrome.runtime.sendMessage({ type: "getFrameOptions" });
+    options = result?.options || [];
     updateOverlays();
   } catch { /* The extension may be reloading. */ }
 }

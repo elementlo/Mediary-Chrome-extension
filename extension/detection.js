@@ -1,5 +1,8 @@
 const HLS_MIME = new Set([
   "application/vnd.apple.mpegurl",
+  "application/mpegurl",
+  "application/x-m3u8",
+  "application/x-hls",
   "application/octet-stream-m3u8",
   "application/x-mpegurl",
   "audio/mpegurl",
@@ -15,6 +18,11 @@ export function classifyUrl(rawUrl) {
   if (/\/api\/hls\/[^/]+\/?$/i.test(url.pathname) &&
       url.searchParams.get("kind") !== "thumbs") return "wrapped-hls";
   if (/\.m3u8$/i.test(url.pathname)) return "hls";
+  for (const [name, value] of url.searchParams) {
+    if (/^(?:format|type)$/i.test(name) && /^(?:hls|m3u8)$/i.test(value)) return "hls";
+    if (/^(?:url|src|source|file|playlist|manifest)$/i.test(name) &&
+        /\.m3u8(?:[?#]|$)/i.test(value)) return "hls";
+  }
   if (/\.(?:mp4|m4v|webm|mkv|mov|avi|flv)$/i.test(url.pathname)) return "video";
   return null;
 }
@@ -23,6 +31,8 @@ export function classifyHeaders(headers = []) {
   const type = headers.find(header => header.name.toLowerCase() === "content-type")?.value;
   const mime = type?.split(";", 1)[0].trim().toLowerCase();
   if (HLS_MIME.has(mime)) return "hls";
+  const disposition = headers.find(header => header.name.toLowerCase() === "content-disposition")?.value;
+  if (/filename\*?\s*=.*\.m3u8(?:["';\s]|$)/i.test(disposition || "")) return "hls";
   return ["video/mp4", "video/webm", "video/x-matroska", "video/quicktime", "video/x-msvideo", "video/x-flv"].includes(mime) ? "video" : null;
 }
 

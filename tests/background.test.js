@@ -35,8 +35,21 @@ test("captures wrapped HLS redirect and clears results after navigation", async 
 
   const video = "https://cdn.example.com/movie.mp4?signature=abc";
   listeners.request({ tabId: 7, requestId: "r3", url: video, initiator: "https://example.com" });
+  listeners.headers({
+    tabId: 7,
+    requestId: "r3",
+    url: video,
+    initiator: "https://example.com",
+    responseHeaders: [
+      { name: "Content-Type", value: "video/mp4" },
+      { name: "Content-Length", value: "100" },
+      { name: "Content-Range", value: "bytes 0-99/4096" }
+    ]
+  });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(data.get("tab:7")[0].kind, "video");
+  assert.equal(data.get("tab:7")[0].size, 4096);
+  assert.equal(data.get("tab:7")[0].contentType, "video/mp4");
 
   listeners.updated(7, { url: "https://example.com/another-video" });
   await new Promise(resolve => setTimeout(resolve, 0));

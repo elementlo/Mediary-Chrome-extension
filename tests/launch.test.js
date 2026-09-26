@@ -16,7 +16,11 @@ test("passes HLS entry, referer and browser user agent to Mediary", () => {
 });
 
 test("rejects a non-HTTP source", () => {
-  assert.throws(() => buildDownloadLink({ url: "file:///tmp/movie" }));
+  assert.throws(() => buildDownloadLink({ kind: "hls", url: "file:///tmp/movie" }));
+});
+
+test("does not offer a Mediary launch for direct MP4 files", () => {
+  assert.throws(() => buildDownloadLink({ kind: "video", url: "https://cdn.example/video.mp4" }));
 });
 
 test("opens the captured signed PNG instead of refetching the HLS entry", () => {
