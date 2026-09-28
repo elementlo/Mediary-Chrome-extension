@@ -3,11 +3,25 @@ import { inspectEntry, normalizeOptions, fallbackOption, applyResolution } from 
 
 const pending = new Map();
 const writes = new Map();
-const videoSizes = new Map();
 const key = tabId => `tab:${tabId}`;
+const sizeKey = tabId => `size:${tabId}`;
 
-function enrichResolution(options, tabId) {
-  const size = videoSizes.get(tabId);
+// The page <video> size is the only resolution source for PNG-disguised
+// streams (their playlists carry no RESOLUTION and the signed URLs hold no
+// hint). It must survive a Manifest V3 service-worker restart, so it lives
+// in chrome.storage.session rather than an in-memory Map that Chrome wipes
+// when the worker is suspended.
+async function readVideoSize(tabId) {
+  try {
+    const data = await chrome.storage.session.get(sizeKey(tabId));
+    return data[sizeKey(tabId)] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function enrichResolution(options, tabId) {
+  const size = await readVideoSize(tabId);
   if (!size?.height) return options;
   return options.map(option => applyResolution(option, size.width, size.height));
 }
@@ -98,17 +112,15 @@ chrome.webRequest.onCompleted.addListener(forgetRequest, { urls: ["http://*/*", 
 chrome.webRequest.onErrorOccurred.addListener(forgetRequest, { urls: ["http://*/*", "https://*/*"] });
 
 chrome.tabs.onRemoved.addListener(tabId => {
-  void chrome.storage.session.remove(key(tabId));
+  void chrome.storage.session.remove([key(tabId), sizeKey(tabId)]);
   writes.delete(tabId);
-  videoSizes.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url && changeInfo.status !== "loading") return;
   const previous = writes.get(tabId) || Promise.resolve();
   const clear = previous.catch(() => {}).then(async () => {
-    await chrome.storage.session.remove(key(tabId));
-    videoSizes.delete(tabId);
+    await chrome.storage.session.remove([key(tabId), sizeKey(tabId)]);
     await chrome.action.setBadgeText({ tabId, text: "" });
     void chrome.tabs.sendMessage?.(tabId, { type: "candidatesChanged" }).catch(() => {});
   });
@@ -130,7 +142,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "reportVideoSize") {
     const tabId = _sender.tab?.id;
     if (Number.isInteger(tabId) && message.height) {
-      videoSizes.set(tabId, { width: Number(message.width) || 0, height: Number(message.height) || 0 });
+      void chrome.storage.session.set({
+        [sizeKey(tabId)]: {
+          width: Number(message.width) || 0,
+          height: Number(message.height) || 0
+        }
+      }).catch(() => {});
     }
     return;
   }
@@ -146,7 +163,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const groups = results.map((result, index) => result.status === "fulfilled"
         ? result.value
         : [fallbackOption(entries[index])]);
-      sendResponse({ options: enrichResolution(normalizeOptions(groups), tabId) });
+      sendResponse({ options: await enrichResolution(normalizeOptions(groups), tabId) });
     }).catch(error => sendResponse({ error: String(error) }));
     return true;
   }
@@ -161,7 +178,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const groups = results.map((result, index) => result.status === "fulfilled"
         ? result.value
         : [fallbackOption(entries[index])]);
-      sendResponse({ options: enrichResolution(normalizeOptions(groups), tabId) });
+      sendResponse({ options: await enrichResolution(normalizeOptions(groups), tabId) });
     }).catch(error => sendResponse({ error: String(error) }));
     return true;
   }

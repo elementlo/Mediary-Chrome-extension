@@ -18,7 +18,7 @@ test("captures wrapped HLS redirect and clears results after navigation", async 
     storage: { session: {
       async get(key) { return { [key]: data.get(key) }; },
       async set(items) { for (const [key, value] of Object.entries(items)) data.set(key, value); },
-      async remove(key) { data.delete(key); }
+      async remove(keys) { for (const key of [].concat(keys)) data.delete(key); }
     } },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} }
   };
@@ -54,5 +54,80 @@ test("captures wrapped HLS redirect and clears results after navigation", async 
   listeners.updated(7, { url: "https://example.com/another-video" });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(data.has("tab:7"), false);
+  delete globalThis.chrome;
+});
+
+test("persists the reported video size so it survives a worker restart", async () => {
+  const listeners = {};
+  const event = name => ({ addListener(listener) { listeners[name] = listener; } });
+  const data = new Map();
+  globalThis.chrome = {
+    webRequest: {
+      onBeforeRequest: event("request"),
+      onBeforeRedirect: event("redirect"),
+      onHeadersReceived: event("headers"),
+      onCompleted: event("completed"),
+      onErrorOccurred: event("error")
+    },
+    tabs: { onRemoved: event("removed"), onUpdated: event("updated") },
+    runtime: { onMessage: event("message") },
+    storage: { session: {
+      async get(key) { return { [key]: data.get(key) }; },
+      async set(items) { for (const [key, value] of Object.entries(items)) data.set(key, value); },
+      async remove(keys) { for (const key of [].concat(keys)) data.delete(key); }
+    } },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} }
+  };
+  // Cache-buster: the first test already imported the module, and a cached
+  // ES module would not register its listeners on this test's chrome mock.
+  await import("../extension/background.js?v=size");
+
+  // The content script reports the playing <video> size.
+  listeners.message(
+    { type: "reportVideoSize", width: 1920, height: 1080 },
+    { tab: { id: 11 } },
+    () => {}
+  );
+  await new Promise(resolve => setTimeout(resolve, 0));
+  // It must be written to session storage, not just an in-memory Map, so a
+  // suspended service worker does not lose it before the popup opens.
+  assert.deepEqual(data.get("size:11"), { width: 1920, height: 1080 });
+
+  // A wrapped-HLS candidate whose playlist carries no RESOLUTION.
+  data.set("tab:11", [{
+    url: "https://cdn.example/master.png?sig=a",
+    kind: "wrapped-hls",
+    wrappedUrl: "https://cdn.example/master.png?sig=a",
+    pageUrl: "https://rou.video/v/x",
+    seenAt: Date.now()
+  }]);
+  const bodies = new Map([
+    ["https://cdn.example/master.png?sig=a", `#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS="avc1.42E01E"
+media.png?sig=a`],
+    ["https://cdn.example/media.png?sig=a", `#EXTM3U
+#EXTINF:10,
+seg.png?sig=a
+#EXT-X-ENDLIST`]
+  ]);
+  globalThis.fetch = async url => {
+    const response = new Response(bodies.get(url), { status: bodies.has(url) ? 200 : 404 });
+    Object.defineProperty(response, "url", { value: url });
+    return response;
+  };
+
+  const response = await new Promise(resolve => {
+    listeners.message(
+      { type: "getOptions", tabId: 11, pageUrl: "https://rou.video/v/x" },
+      { tab: { id: 11 } },
+      resolve
+    );
+  });
+  const [option] = response.options;
+  assert.equal(option.height, 1080);
+  assert.equal(option.spec, "1080p");
+  assert.match(option.details, /1920×1080/);
+
+  delete globalThis.fetch;
   delete globalThis.chrome;
 });
