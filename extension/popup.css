@@ -34,16 +34,10 @@ main { padding: 10px; }
 }
 .icon-button:hover { background: #f9fafc; color: #344054; }
 .mark {
-  display: grid;
-  place-items: center;
   width: 26px;
   height: 26px;
   flex: none;
   border-radius: 8px;
-  background: linear-gradient(145deg, #5b5ce2, #4338ca);
-  color: white;
-  font-size: 13px;
-  font-weight: 800;
   box-shadow: 0 4px 12px #4f46e52b;
 }
 h1 { margin: 0; font-size: 13px; line-height: 1.3; }
