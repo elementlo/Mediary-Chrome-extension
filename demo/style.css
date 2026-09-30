@@ -14,3 +14,19 @@ button:disabled { cursor: wait; opacity: .6; }
 #status { min-height: 24px; }
 ol { padding-left: 22px; margin-top: 26px; }
 .note { font-size: 13px; color: #8da0b5; }
+
+/* Scenario cards */
+.scenarios { display: grid; gap: 12px; margin-top: 22px; }
+.card { background: #16212f; border: 1px solid #33465a; border-radius: 12px; padding: 16px 18px; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head h2 { font-size: 17px; margin: 0; }
+.badge { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.badge.wrapped-hls { background: #3b2f63; color: #c9b8ff; }
+.badge.hls { background: #1d3a2c; color: #8fe0b4; }
+.badge.video { background: #1d3040; color: #9fd0e8; }
+.badge.dash { background: #3d2f1d; color: #e8c98f; }
+.badge.noise { background: #3d1d1d; color: #e89f9f; }
+.desc { margin: 8px 0 4px; font-size: 14px; }
+.expect { margin: 0 0 12px; font-size: 13px; color: #8da0b5; }
+.expect strong { color: #b5e5cf; }
+.card-video { display: block; width: 192px; height: 108px; margin: 0 0 12px; background: #05090e; border: 1px solid #33465a; border-radius: 8px; }

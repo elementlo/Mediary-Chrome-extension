@@ -11,9 +11,39 @@ This workspace contains a locally extracted IDM Integration Module CRX, a Chrome
 
 ## Added detection
 
-The local analysis in `/Users/element/Documents/网页播放机制分析.md` identifies a playback route: `GET /api/hls/<id>` redirects to a signed CDN `.png`; the PNG contains a private `roUd` chunk with an HLS manifest or segment. `extension/` detects the entry request and associates its `.png` redirect with that entry. It also detects ordinary `.m3u8` URLs, HLS URLs in common query parameters, HLS response MIME types and playlist filenames, and common video file URLs/MIME types. It intentionally ignores `/api/hls/<id>?kind=thumbs` and `/api/v/<id>/play`.
+Detection is fully generic and site-agnostic:
 
-Chrome `webRequest` does not expose response bodies. When it captures the redirect, the extension passes the signed PNG URL to Stream Mediary through the `stream-mediary://download` desktop protocol, avoiding another request to the HLS entry. If no redirect was captured, it passes the original HTTP(S) entry. It includes the page URL as `Referer` and the browser User-Agent. Mediary extracts `roUd` from PNG manifests, segments and keys, inherits the CDN signature for relative references, and merges the decoded media. No local proxy is needed. On a `rou.video/v/<id>` page, the toolbar popup can construct the API entry if it missed the initial request.
+- Ordinary HLS by `.m3u8` extension, common query parameters (`format=hls`, `url=...m3u8`, …), HLS response MIME types and playlist filenames.
+- **DASH manifests** by `.mpd` extension, query parameters (`format=mpd`, `type=dash`) and MIME (`application/dash+xml`, `video/vnd.mpeg.dash.mpd`). DASH is copy-only: Mediary downloads HLS, so the manifest URL can be copied but not launched.
+- Direct video files by extension/MIME: mp4, m4v, webm, mkv, mov, avi, flv, f4v, 3gp, 3g2, wmv, mpg, mpeg, m2ts, mts, vob, ogv, divx (plus the matching `video/*` MIME types). HLS/DASH *segments* (`.ts`, `.m4s`, `video/mp2t`) are deliberately not classified as standalone videos.
+- **DOM media sniffing**: the content script scans `video/audio/source/object/embed` elements for http(s) sources (blob:/data: skipped) and reports them, covering players that set `src` directly without an observable request.
+- **PNG-wrapped HLS by structural probe**: *any* request that redirects to a `.png` becomes a candidate; when the popup inspects it, the PNG is unwrapped and only kept if it actually carries a `roUd` chunk with an HLS manifest. Plain images (icons, sprites) fail verification and are dropped silently. No URL path patterns are involved.
+
+### Optional rules (JSON import only)
+
+Rules are an **extra filter** on top of generic detection, configurable only by importing a JSON file (popup → ⚙ → 导入 JSON; there is no editing form). The extension ships without any rules. When the current page's hostname matches one or more rules, only candidates passing those rules are kept; when no rule matches, generic detection passes everything. A rule can also reconstruct an entry URL for pages whose stream request cannot be observed at all:
+
+```json
+[{
+  "hostname": "example.com",
+  "urlFilter": "^https://example\\.com/api/",
+  "pagePath": "^/v/([^/]+)/?$",
+  "entryPath": "/api/hls/$1",
+  "kind": "wrapped-hls"
+}]
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `hostname` | yes | exact page hostname the rule applies to |
+| `urlFilter` | no | RegExp source; captured candidates on this host are kept only if their URL matches. Omit to keep everything on this host |
+| `pagePath` | with `entryPath` | RegExp source matched against the page pathname |
+| `entryPath` | no | entry pathname template (`$1..$n` = `pagePath` capture groups); used as a fallback candidate when nothing was captured |
+| `kind` | no | fallback kind: `wrapped-hls` (default) or `hls` |
+
+The file is a plain JSON array of rule objects; unknown fields are dropped and exact duplicates are merged at import. Invalid rules are rejected at import time with a reason. Rules are stored in `chrome.storage.local` and can be exported/cleared from the same panel.
+
+Chrome `webRequest` does not expose response bodies. When the extension captures a PNG redirect, it passes the signed PNG URL to Stream Mediary through the `stream-mediary://download` desktop protocol, avoiding another request to the HLS entry. If no redirect was captured, it passes the original HTTP(S) entry. It includes the page URL as `Referer` and the browser User-Agent. Mediary extracts `roUd` from PNG manifests, segments and keys, inherits the CDN signature for relative references, and merges the decoded media. No local proxy is needed. Source signatures can expire, and a site requiring browser-only authentication may still reject Mediary's requests. The implementation has been verified with a synthetic wrapped HLS server (see `demo/`).
 
 The popup expands a captured source into selectable specs: it fetches the playlist, unwraps PNG `roUd` payloads, resolves relative variant URIs with the inherited signature, and estimates each size. Card labels show the format and spec (for example `1080p`) plus the size; approximate sizes are prefixed with 约. No menu shows the download address. Clicking a card selects it; **复制链接** copies the address of the selection (variant playlist, signed PNG URL when captured, or direct media URL). **Mediary 下载** appears only for HLS and PNG-wrapped HLS selections and passes the same address through `stream-mediary://download`, also copying it for manual use; direct video files such as MP4 are copy-only because Mediary downloads HLS playlists. Neither form is necessarily an ordinary `.m3u8` URL for generic downloaders. The old `hls_proxy.py` remains available for those downloaders. Source signatures can expire, and a site requiring browser-only authentication may still reject Mediary's requests. The implementation has been verified with a synthetic wrapped HLS server, not a live Rou session.
 

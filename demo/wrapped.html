@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PNG 伪装 HLS · 本地联动测试</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">本地联动测试</p>
+    <h1>PNG 伪装的 HLS 视频</h1>
+    <p>播放会请求 <code>/api/hls/demo</code>，随后跳转到带签名的 PNG。清单和视频分片都藏在 PNG 的 <code>roUd</code> 数据块中。</p>
+    <div class="player">
+      <video id="video" controls muted playsinline width="640" height="360"></video>
+    </div>
+    <div class="actions">
+      <button id="play" type="button">加载并播放</button>
+      <button id="copy" class="secondary" type="button">复制 HLS 入口</button>
+    </div>
+    <p id="status" role="status">点击“加载并播放”，然后打开 Chrome 插件查看检测结果。</p>
+    <ol>
+      <li>确认已在 Chrome 加载插件，并运行新版 Mediary。</li>
+      <li>点击“加载并播放”，等待画面出现。</li>
+      <li>在插件弹窗或视频悬浮按钮中选择“在 Mediary 中下载”。</li>
+      <li>下载完成后，播放输出文件，确认画面与此处一致。</li>
+    </ol>
+    <p class="note">此页面仅供本机测试；视频由本机 ffmpeg 生成，无外部网络依赖。</p>
+  </main>
+  <script src="/player.js" defer></script>
+</body>
+</html>
