@@ -7,21 +7,42 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <main>
+  <main id="view-main">
     <header class="header">
       <span class="mark" aria-hidden="true">M</span>
       <div>
         <h1>选择下载规格</h1>
         <p id="status" role="status">正在读取媒体信息…</p>
       </div>
+      <button id="open-rules" class="icon-button" type="button" title="配置规则" aria-label="配置规则">⚙</button>
     </header>
     <div id="entries" class="entries" role="radiogroup" aria-label="可下载规格"></div>
     <div id="empty" class="empty" hidden>播放视频后将在这里显示可下载规格</div>
     <footer class="actions">
       <button id="copy" type="button" disabled>复制链接</button>
-      <a id="download" class="button disabled" role="button" aria-disabled="true">Mediary 下载</a>
+      <a id="download" class="button disabled" role="button" aria-disabled="true" hidden>Mediary 下载</a>
     </footer>
   </main>
+
+  <main id="view-rules" hidden>
+    <header class="header">
+      <button id="close-rules" class="icon-button" type="button" title="返回" aria-label="返回">←</button>
+      <div>
+        <h1>配置规则</h1>
+      </div>
+    </header>
+
+    <div id="rule-list" class="rule-list"></div>
+    <div id="rules-empty" class="empty" hidden>暂无规则</div>
+    <p id="rule-error" class="rule-error" hidden></p>
+
+    <footer class="actions">
+      <button id="rules-import" type="button">导入 JSON</button>
+      <button id="rules-export" type="button">导出 JSON</button>
+      <button id="rules-clear" type="button" class="danger">清空</button>
+    </footer>
+  </main>
+
   <script type="module" src="popup.js"></script>
 </body>
 </html>

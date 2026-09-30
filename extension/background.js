@@ -1,7 +1,7 @@
-import { classifyUrl, classifyHeaders, isSignedPngRedirect } from "./detection.js";
+import { classifyUrl, classifyHeaders, isPngRedirect } from "./detection.js";
 import { inspectEntry, normalizeOptions, fallbackOption, applyResolution } from "./media-options.js";
+import { RULES_STORAGE_KEY, rulesForPage, candidateAllowed, matchPageRule } from "./site-rules.js";
 
-const pending = new Map();
 const writes = new Map();
 const key = tabId => `tab:${tabId}`;
 const sizeKey = tabId => `size:${tabId}`;
@@ -26,19 +26,56 @@ async function enrichResolution(options, tabId) {
   return options.map(option => applyResolution(option, size.width, size.height));
 }
 
-function rouPageCandidate(pageUrl) {
-  try {
-    const page = new URL(pageUrl);
-    if (page.hostname !== "rou.video") return null;
-    const match = page.pathname.match(/^\/v\/([^/]+)\/?$/);
-    if (!match) return null;
-    return {
-      url: `${page.origin}/api/hls/${match[1]}`,
-      kind: "wrapped-hls",
-      pageUrl: page.href,
-      seenAt: Date.now()
-    };
-  } catch { return null; }
+// Inspects captured entries into selectable options. A wrapped-hls candidate
+// that fails inspection is dropped silently: the generic PNG-redirect probe
+// captures every .png (icons, sprites, …), and a PNG without a roUd chunk is
+// simply not a disguised stream. Other kinds keep a fallback card so a
+// transient fetch error still leaves the entry selectable.
+async function buildOptions(entries, tabId) {
+  const results = await Promise.allSettled(entries.map(entry => inspectEntry(entry)));
+  const groups = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      groups.push(result.value);
+    } else if (entries[index].kind !== "wrapped-hls") {
+      groups.push([fallbackOption(entries[index])]);
+    }
+  });
+  return enrichResolution(normalizeOptions(groups), tabId);
+}
+
+// Site rules are an optional extra filter imported as JSON; the extension
+// itself ships without any site data. Cached in memory and refreshed via a
+// storage listener so webRequest handlers stay cheap.
+let cachedRules = [];
+let rulesLoaded = null;
+
+function loadRules() {
+  rulesLoaded ??= chrome.storage.local.get(RULES_STORAGE_KEY).then(data => {
+    const rules = data[RULES_STORAGE_KEY];
+    cachedRules = Array.isArray(rules) ? rules : [];
+    return cachedRules;
+  }).catch(() => {
+    cachedRules = [];
+    return cachedRules;
+  });
+  return rulesLoaded;
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes[RULES_STORAGE_KEY]) {
+    const rules = changes[RULES_STORAGE_KEY].newValue;
+    cachedRules = Array.isArray(rules) ? rules : [];
+  }
+});
+
+async function pageRulesFor(pageUrl) {
+  return rulesForPage(pageUrl, await loadRules());
+}
+
+async function pageRuleCandidate(pageUrl) {
+  if (!pageUrl) return null;
+  return matchPageRule(pageUrl, await loadRules());
 }
 
 function save(tabId, candidate) {
@@ -68,24 +105,33 @@ function save(tabId, candidate) {
 chrome.webRequest.onBeforeRequest.addListener(details => {
   const kind = classifyUrl(details.url);
   if (!kind || details.tabId < 0) return;
-  if (kind === "wrapped-hls") pending.set(details.requestId, details.url);
-  void save(details.tabId, {
-    url: details.url,
-    kind,
-    pageUrl: details.initiator || "",
-    seenAt: Date.now()
+  const pageUrl = details.initiator || "";
+  void pageRulesFor(pageUrl).then(pageRules => {
+    if (!candidateAllowed(details.url, pageRules)) return;
+    void save(details.tabId, {
+      url: details.url,
+      kind,
+      pageUrl,
+      seenAt: Date.now()
+    });
   });
 }, { urls: ["http://*/*", "https://*/*"] });
 
 chrome.webRequest.onBeforeRedirect.addListener(details => {
-  const entryUrl = pending.get(details.requestId) || details.url;
-  if (!isSignedPngRedirect(entryUrl, details.redirectUrl)) return;
-  void save(details.tabId, {
-    url: entryUrl,
-    kind: "wrapped-hls",
-    wrappedUrl: details.redirectUrl,
-    pageUrl: details.initiator || "",
-    seenAt: Date.now()
+  // Generic wrapped-HLS probe: any redirect to a .png is a candidate. Plain
+  // images are dropped later when the roUd unwrap fails during inspection.
+  if (!isPngRedirect(details.redirectUrl) || details.tabId < 0) return;
+  const entryUrl = details.url;
+  const pageUrl = details.initiator || "";
+  void pageRulesFor(pageUrl).then(pageRules => {
+    if (!candidateAllowed(entryUrl, pageRules)) return;
+    void save(details.tabId, {
+      url: entryUrl,
+      kind: "wrapped-hls",
+      wrappedUrl: details.redirectUrl,
+      pageUrl,
+      seenAt: Date.now()
+    });
   });
 }, { urls: ["http://*/*", "https://*/*"] });
 
@@ -97,19 +143,19 @@ chrome.webRequest.onHeadersReceived.addListener(details => {
   const rangeTotal = value("content-range")?.match(/\/(\d+)\s*$/)?.[1];
   const size = Number(rangeTotal || value("content-length"));
   const contentType = value("content-type")?.split(";", 1)[0].trim().toLowerCase();
-  void save(details.tabId, {
-    url: details.url,
-    kind,
-    pageUrl: details.initiator || "",
-    seenAt: Date.now(),
-    ...(Number.isFinite(size) && size > 0 ? { size } : {}),
-    ...(contentType ? { contentType } : {})
+  const pageUrl = details.initiator || "";
+  void pageRulesFor(pageUrl).then(pageRules => {
+    if (!candidateAllowed(details.url, pageRules)) return;
+    void save(details.tabId, {
+      url: details.url,
+      kind,
+      pageUrl,
+      seenAt: Date.now(),
+      ...(Number.isFinite(size) && size > 0 ? { size } : {}),
+      ...(contentType ? { contentType } : {})
+    });
   });
 }, { urls: ["http://*/*", "https://*/*"] }, ["responseHeaders"]);
-
-function forgetRequest(details) { pending.delete(details.requestId); }
-chrome.webRequest.onCompleted.addListener(forgetRequest, { urls: ["http://*/*", "https://*/*"] });
-chrome.webRequest.onErrorOccurred.addListener(forgetRequest, { urls: ["http://*/*", "https://*/*"] });
 
 chrome.tabs.onRemoved.addListener(tabId => {
   void chrome.storage.session.remove([key(tabId), sizeKey(tabId)]);
@@ -151,19 +197,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     return;
   }
+  if (message?.type === "reportDomMedia" && Array.isArray(message.urls)) {
+    const tabId = _sender.tab?.id;
+    if (!Number.isInteger(tabId)) return;
+    const pageUrl = _sender.tab?.url || "";
+    void pageRulesFor(pageUrl).then(pageRules => {
+      for (const url of message.urls) {
+        const kind = classifyUrl(url);
+        if (!kind || !candidateAllowed(url, pageRules)) continue;
+        void save(tabId, { url, kind, pageUrl, seenAt: Date.now() });
+      }
+    });
+    return;
+  }
   if (message?.type === "getFrameOptions") {
     const tabId = _sender.tab?.id;
     if (!Number.isInteger(tabId)) return;
     const storageKey = key(tabId);
     chrome.storage.session.get(storageKey).then(async data => {
       const entries = data[storageKey] || [];
-      const fallback = rouPageCandidate(_sender.tab?.url || "");
+      const fallback = await pageRuleCandidate(_sender.tab?.url || "");
       if (!entries.length && fallback) entries.push(fallback);
-      const results = await Promise.allSettled(entries.map(entry => inspectEntry(entry)));
-      const groups = results.map((result, index) => result.status === "fulfilled"
-        ? result.value
-        : [fallbackOption(entries[index])]);
-      sendResponse({ options: await enrichResolution(normalizeOptions(groups), tabId) });
+      sendResponse({ options: await buildOptions(entries, tabId) });
     }).catch(error => sendResponse({ error: String(error) }));
     return true;
   }
@@ -172,13 +227,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const storageKey = key(tabId);
     chrome.storage.session.get(storageKey).then(async data => {
       const entries = data[storageKey] || [];
-      const fallback = rouPageCandidate(message.pageUrl || "");
+      const fallback = await pageRuleCandidate(message.pageUrl || "");
       if (!entries.length && fallback) entries.push(fallback);
-      const results = await Promise.allSettled(entries.map(entry => inspectEntry(entry)));
-      const groups = results.map((result, index) => result.status === "fulfilled"
-        ? result.value
-        : [fallbackOption(entries[index])]);
-      sendResponse({ options: await enrichResolution(normalizeOptions(groups), tabId) });
+      sendResponse({ options: await buildOptions(entries, tabId) });
     }).catch(error => sendResponse({ error: String(error) }));
     return true;
   }

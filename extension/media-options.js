@@ -1,7 +1,10 @@
 import { preferredDownloadUrl } from "./launch.js";
 
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
-const DIRECT_EXTENSIONS = new Set(["mp4", "m4v", "webm", "mkv", "mov", "avi", "flv"]);
+const DIRECT_EXTENSIONS = new Set([
+  "mp4", "m4v", "webm", "mkv", "mov", "avi", "flv", "f4v",
+  "3gp", "3g2", "wmv", "mpg", "mpeg", "m2ts", "mts", "vob", "ogv", "divx"
+]);
 
 function positiveInteger(value) {
   const number = Number(value);
@@ -186,17 +189,6 @@ function extensionOf(url) {
   }
 }
 
-function codecLabel(codecs) {
-  if (!codecs) return null;
-  const videoCodec = codecs.split(",").map(value => value.trim()).find(value => /^(?:avc|hev|hvc|vp0?9|av01)/i.test(value));
-  if (!videoCodec) return null;
-  if (/^avc/i.test(videoCodec)) return "H.264";
-  if (/^(?:hev|hvc)/i.test(videoCodec)) return "H.265";
-  if (/^vp0?9/i.test(videoCodec)) return "VP9";
-  if (/^av01/i.test(videoCodec)) return "AV1";
-  return videoCodec;
-}
-
 function inferredResolution(url) {
   try {
     const value = decodeURIComponent(new URL(url).pathname);
@@ -221,11 +213,15 @@ function inferredHeight(url) {
   }
 }
 
+function defaultFormat(kind) {
+  if (kind === "video") return "VIDEO";
+  if (kind === "dash") return "DASH";
+  return "HLS";
+}
+
 function makeOption(entry, values) {
   const height = values.height || inferredHeight(values.downloadUrl);
   const resolution = values.width && height ? `${values.width}×${height}` : null;
-  const bitrate = values.bandwidth ? `${(values.bandwidth / 1_000_000).toFixed(values.bandwidth >= 10_000_000 ? 0 : 1)} Mbps` : null;
-  const codec = codecLabel(values.codecs);
   const spec = values.name || (height ? `${height}p` : values.format || "原始画质");
   return {
     id: `${values.downloadUrl}#${spec}`,
@@ -237,9 +233,9 @@ function makeOption(entry, values) {
     },
     downloadUrl: values.downloadUrl,
     kind: values.wrapped ? "wrapped-hls" : entry.kind,
-    format: values.format || (entry.kind === "video" ? "VIDEO" : "HLS"),
+    format: values.format || defaultFormat(entry.kind),
     spec,
-    details: [resolution, bitrate, codec].filter(Boolean).join(" · ") || "原始媒体",
+    details: resolution || "原始媒体",
     size: values.size ?? null,
     approximate: Boolean(values.approximate),
     height: height || 0,
@@ -259,6 +255,18 @@ export async function inspectEntry(entry, fetcher = fetch) {
       width: resolution.width,
       height: resolution.height,
       size,
+      wrapped: false
+    })];
+  }
+
+  // A DASH manifest is XML, not an HLS playlist, so it cannot be parsed or
+  // size-estimated here. Surface it as a copy-only candidate (Mediary
+  // downloads HLS, not DASH); the user can still copy the manifest URL.
+  if (entry.kind === "dash") {
+    return [makeOption(entry, {
+      downloadUrl: entry.url,
+      format: "DASH",
+      size: positiveInteger(entry.size),
       wrapped: false
     })];
   }
@@ -346,7 +354,10 @@ export function applyResolution(option, width, height) {
 }
 
 export function fallbackOption(entry) {
-  let format = entry.kind === "video" ? "视频" : entry.kind === "wrapped-hls" ? "PNG-HLS" : "HLS";
+  let format = entry.kind === "video" ? "视频"
+    : entry.kind === "wrapped-hls" ? "PNG-HLS"
+    : entry.kind === "dash" ? "DASH"
+    : "HLS";
   try {
     const extension = new URL(entry.url).pathname.match(/\.([a-z0-9]{2,5})$/i)?.[1];
     if (entry.kind === "video" && extension) format = extension.toUpperCase();

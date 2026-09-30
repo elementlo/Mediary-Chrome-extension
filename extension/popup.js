@@ -1,5 +1,6 @@
 import { buildDownloadLink, preferredDownloadUrl } from "./launch.js";
 import { formatSize } from "./media-options.js";
+import { RULES_STORAGE_KEY, normalizeRules } from "./site-rules.js";
 
 const status = document.querySelector("#status");
 const container = document.querySelector("#entries");
@@ -135,3 +136,116 @@ try {
   empty.textContent = "无法读取当前页面的媒体信息";
   empty.hidden = false;
 }
+
+// ---------------------------------------------------------------------------
+// Site rules panel (in-popup; JSON import only, no editing form)
+// ---------------------------------------------------------------------------
+
+const viewMain = document.querySelector("#view-main");
+const viewRules = document.querySelector("#view-rules");
+const ruleList = document.querySelector("#rule-list");
+const rulesEmpty = document.querySelector("#rules-empty");
+const ruleError = document.querySelector("#rule-error");
+
+let rules = [];
+
+function showRulesError(message) {
+  ruleError.textContent = message || "";
+  ruleError.hidden = !message;
+}
+
+function describeRule(rule) {
+  const parts = [rule.hostname];
+  if (rule.urlFilter) parts.push(rule.urlFilter);
+  if (rule.pagePath && rule.entryPath) parts.push(`${rule.pagePath} → ${rule.entryPath}`);
+  parts.push(rule.kind);
+  return parts.join("   ");
+}
+
+function renderRules() {
+  ruleList.replaceChildren();
+  rulesEmpty.hidden = rules.length > 0;
+  for (const rule of rules) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+
+    const info = document.createElement("div");
+    info.className = "rule-info";
+    const name = document.createElement("div");
+    name.className = "rule-name";
+    name.textContent = rule.hostname;
+    const detail = document.createElement("div");
+    detail.className = "rule-detail";
+    detail.textContent = describeRule(rule);
+    detail.title = detail.textContent;
+    info.append(name, detail);
+
+    row.append(info);
+    ruleList.append(row);
+  }
+}
+
+async function loadRules() {
+  const data = await chrome.storage.local.get(RULES_STORAGE_KEY);
+  const stored = data[RULES_STORAGE_KEY];
+  rules = Array.isArray(stored) ? stored : [];
+  renderRules();
+}
+
+async function persistRules(next) {
+  try {
+    rules = normalizeRules(next);
+  } catch (error) {
+    showRulesError(error.message);
+    return false;
+  }
+  await chrome.storage.local.set({ [RULES_STORAGE_KEY]: rules });
+  renderRules();
+  showRulesError("");
+  return true;
+}
+
+document.querySelector("#open-rules").addEventListener("click", () => {
+  viewMain.hidden = true;
+  viewRules.hidden = false;
+  void loadRules();
+});
+
+document.querySelector("#close-rules").addEventListener("click", () => {
+  viewRules.hidden = true;
+  viewMain.hidden = false;
+});
+
+document.querySelector("#rules-export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(rules, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "mediary-rules.json";
+  anchor.click();
+  URL.revokeObjectURL(url);
+});
+
+document.querySelector("#rules-import").addEventListener("click", () => {
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "application/json,.json";
+  picker.addEventListener("change", () => {
+    const file = picker.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        void persistRules(JSON.parse(String(reader.result)));
+      } catch (error) {
+        showRulesError(`导入失败：${error.message}`);
+      }
+    };
+    reader.readAsText(file);
+  });
+  picker.click();
+});
+
+document.querySelector("#rules-clear").addEventListener("click", () => {
+  void persistRules([]);
+});

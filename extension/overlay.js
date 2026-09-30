@@ -28,6 +28,46 @@ function reportVideoSize(width, height) {
   } catch { /* The extension may be reloading. */ }
 }
 
+// DOM media sniffing. Some players set a media element's src directly (or via
+// <source>/<object>/<embed>) without a separately observable request, so
+// webRequest alone misses them. Scan the DOM for http(s) media sources and
+// report them; the background classifies and filters them like any other
+// candidate. blob:/data:/relative URLs are skipped (not directly fetchable).
+let reportedMediaSignature = null;
+function collectDomMediaUrls() {
+  const urls = new Set();
+  const push = value => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (/^https?:\/\//i.test(trimmed)) urls.add(trimmed);
+  };
+  for (const el of document.querySelectorAll("video,audio,source,object,embed")) {
+    const tag = el.localName;
+    if (tag === "object" || tag === "embed") {
+      push(el.data);
+      push(el.getAttribute("data"));
+      push(el.src);
+      push(el.getAttribute("src"));
+    } else {
+      push(el.currentSrc);
+      push(el.src);
+      push(el.getAttribute("src"));
+    }
+  }
+  return [...urls];
+}
+
+function reportDomMedia() {
+  const urls = collectDomMediaUrls();
+  const signature = urls.join("|");
+  if (signature === reportedMediaSignature) return;
+  reportedMediaSignature = signature;
+  if (!urls.length) return;
+  try {
+    void chrome.runtime.sendMessage({ type: "reportDomMedia", urls }).catch(() => {});
+  } catch { /* The extension may be reloading. */ }
+}
+
 function hideOverlay(overlay) {
   overlay.panel.classList.remove("open");
   overlay.host.style.display = "none";
@@ -124,29 +164,29 @@ function createOverlay(video) {
       color:white; cursor:pointer; font:600 12px system-ui,sans-serif; padding:7px 11px;
       box-shadow:0 3px 14px #0005; backdrop-filter:blur(8px); }
     .toggle:hover { background:#303954; }
-    .panel { display:none; width:260px; max-height:340px; overflow:auto; margin-top:6px;
+    .panel { display:none; width:210px; max-height:320px; overflow:auto; margin-top:6px;
       padding:4px; background:#fff; border:1px solid #e3e7ef; border-radius:12px;
       box-shadow:0 10px 32px #1018283d; color:#18212f; font:12px system-ui,sans-serif; }
     .panel.open { display:block; }
-    .option { display:block; position:relative; padding:7px 8px; border:1px solid #e3e7ef;
-      border-radius:9px; background:#fff; cursor:pointer; margin-bottom:5px; }
+    .option { display:block; position:relative; padding:6px 7px; border:1px solid #e3e7ef;
+      border-radius:9px; background:#fff; cursor:pointer; margin-bottom:4px; }
     .option:last-of-type { margin-bottom:0; }
     .option.selected { border-color:#4f46e5; box-shadow:0 0 0 2px #4f46e51a; }
     .option input { position:absolute; width:1px; height:1px; opacity:0; }
-    .head { display:flex; align-items:center; justify-content:space-between; gap:7px; min-width:0; }
-    .kind { flex:none; padding:2px 6px; border-radius:5px; background:#eef0ff;
-      color:#4338ca; font-size:10px; font-weight:700; }
+    .head { display:flex; align-items:center; justify-content:space-between; gap:6px; min-width:0; }
+    .kind { flex:none; padding:1px 5px; border-radius:5px; background:#eef0ff;
+      color:#4338ca; font-size:9px; font-weight:700; }
     .kind.video { background:#edf7f3; color:#147d61; }
-    .check { display:grid; place-items:center; width:15px; height:15px;
-      border:1.5px solid #cbd2df; border-radius:50%; color:transparent; font-size:10px; font-weight:800; }
+    .check { display:grid; place-items:center; width:13px; height:13px;
+      border:1.5px solid #cbd2df; border-radius:50%; color:transparent; font-size:9px; font-weight:800; }
     .option.selected .check { border-color:#4f46e5; background:#4f46e5; color:#fff; }
-    .spec { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:750; }
-    .meta { margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#344054; font-size:10px; font-weight:650; }
-    .panel-actions { display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid #eef0f4; }
-    .actions { display:flex; justify-content:flex-end; gap:6px; }
-    .copy, .launch { display:inline-flex; align-items:center; justify-content:center; min-height:28px;
-      padding:4px 9px; border:1px solid #dce1ec; border-radius:6px; background:#fff;
-      color:#344054; cursor:pointer; font:12px system-ui,sans-serif; text-decoration:none; }
+    .spec { margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:750; }
+    .meta { margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#344054; font-size:10px; font-weight:650; }
+    .panel-actions { display:flex; gap:5px; margin-top:6px; padding-top:6px; border-top:1px solid #eef0f4; }
+    .actions { display:flex; justify-content:flex-end; gap:5px; }
+    .copy, .launch { display:inline-flex; align-items:center; justify-content:center; min-height:26px;
+      padding:3px 8px; border:1px solid #dce1ec; border-radius:6px; background:#fff;
+      color:#344054; cursor:pointer; font:11px system-ui,sans-serif; text-decoration:none; }
     .copy:hover { background:#f8f9fc; }
     .launch { border-color:#4f46e5; background:#4f46e5; color:#fff; }
     .launch:hover { background:#4338ca; }
@@ -279,6 +319,7 @@ function updateOverlays() {
     }
   }
   reportVideoSize(maxWidth, maxHeight);
+  reportDomMedia();
   for (const [video, overlay] of overlays) {
     if (!videos.has(video)) {
       overlay.host.remove();

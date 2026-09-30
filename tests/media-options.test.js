@@ -93,13 +93,25 @@ test("shows resolution and size for a direct video file", async () => {
   assert.equal(option.size, 1048576);
 });
 
+test("surfaces a DASH manifest as a copy-only candidate without parsing it", async () => {
+  const [option] = await inspectEntry({
+    kind: "dash",
+    url: "https://cdn.example/manifest.mpd?token=abc",
+    size: 4096
+  });
+  assert.equal(option.kind, "dash");
+  assert.equal(option.format, "DASH");
+  assert.equal(option.downloadUrl, "https://cdn.example/manifest.mpd?token=abc");
+  assert.equal(option.size, 4096);
+});
+
 test("fills missing resolution from the page video size", () => {
   const base = { id: "a", spec: "原始规格", details: "原始媒体", height: 0, width: null };
   const filled = applyResolution(base, 1920, 1080);
   assert.equal(filled.spec, "1080p");
   assert.equal(filled.details, "1920×1080");
-  const kept = applyResolution({ ...base, details: "4.5 Mbps · H.264" }, 1920, 1080);
-  assert.equal(kept.details, "1920×1080 · 4.5 Mbps · H.264");
+  const kept = applyResolution({ ...base, details: "1280×720" }, 1920, 1080);
+  assert.equal(kept.details, "1920×1080 · 1280×720");
   assert.equal(applyResolution({ ...base, height: 720 }, 1920, 1080).height, 720);
 });
 
