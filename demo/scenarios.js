@@ -142,7 +142,14 @@ async function init() {
     video.src = MINI_CLIP;
     void video.play().catch(() => {});
   }
-  setStatus("就绪。悬停任意小视频可唤出「视频链接」悬浮按钮；点击各场景「触发」按钮后再打开插件弹窗核对结果。");
+  // Seed a downloadable (wrapped-HLS) candidate on load. The decorative card
+  // clips are plain MP4 — copy-only by design — so without this the overlay
+  // would never offer "Mediary 下载" until a scenario is triggered. Fetching
+  // the wrapped-HLS entry gives every video an HLS candidate to select.
+  try {
+    await fetchProbe("/api/hls/demo");
+  } catch { /* The scenario cards still work without the seed. */ }
+  setStatus("就绪。悬停任意小视频可唤出「视频链接」悬浮按钮（默认已选中可下载的 HLS）；点击各场景「触发」按钮可追加对应类型的候选。");
 }
 
 void init();

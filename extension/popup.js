@@ -46,7 +46,7 @@ function selectOption(option) {
   }
 }
 
-function renderOption(option, index) {
+function renderOption(option) {
   const card = document.createElement("label");
   card.className = "option";
   const radio = document.createElement("input");
@@ -84,7 +84,6 @@ function renderOption(option, index) {
   card.append(size);
   cards.set(option.id, card);
   container.append(card);
-  if (index === 0) selectOption(option);
 }
 
 async function copySelected() {
@@ -128,6 +127,13 @@ try {
     empty.hidden = false;
   } else {
     options.forEach(renderOption);
+    // Default-select a downloadable candidate (HLS / wrapped-HLS) when one
+    // exists, so the primary "Mediary 下载" action is visible without picking
+    // past copy-only entries (e.g. a decorative MP4).
+    const preferred = options.find(
+      option => option.kind === "hls" || option.kind === "wrapped-hls"
+    ) || options[0];
+    selectOption(preferred);
     status.textContent = `已找到 ${options.length} 个可下载规格`;
     empty.hidden = true;
   }

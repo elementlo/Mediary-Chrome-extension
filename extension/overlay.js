@@ -304,7 +304,16 @@ function renderPanel(overlay, candidates) {
   overlay.copyButton = copy;
   overlay.launchButton = launch;
 
-  if (candidates.length) selectOption(overlay, candidates[0]);
+  // Default-select a downloadable candidate (HLS / wrapped-HLS) when one
+  // exists, so the primary "Mediary 下载" action is visible without the user
+  // having to pick past copy-only entries (e.g. a decorative MP4). Fall back
+  // to the first candidate otherwise.
+  if (candidates.length) {
+    const preferred = candidates.find(
+      option => option.kind === "hls" || option.kind === "wrapped-hls"
+    ) || candidates[0];
+    selectOption(overlay, preferred);
+  }
 }
 
 function updateOverlays() {
