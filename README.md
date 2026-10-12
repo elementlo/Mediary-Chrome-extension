@@ -1,27 +1,63 @@
 # Video Stream Link Detector
 
-This workspace contains a locally extracted IDM Integration Module CRX, a Chrome Manifest V3 extension, and an optional legacy HLS proxy. The extension integrates with [Stream Mediary](https://github.com/elementlo/stream-mediary) on macOS and Windows.
+一个 Chrome（Manifest V3）扩展，在视频网页上自动嗅探 **HLS / PNG 包装流**入口，一键唤起桌面下载器 [Mediary](https://github.com/elementlo/stream-mediary) 完成下载。
 
-## Source analysis
+<p>
+  <strong>简体中文</strong> | <a href="README.en.md">English</a>
+</p>
 
-- `source-crx/IDMGCExt.crx` is a public mirror of the 2021 Chrome package, from [Bang1338/idm-extension](https://github.com/Bang1338/idm-extension), commit `9f233ea`. SHA-256: `0f6b76f90f1aebbd365fd3b6e7a3690745289c486ac9374398d560ecbced3eb0`.
-- `legacy-source/` is the CRX ZIP payload, extracted without changing its minified JavaScript. The package declares Manifest V2 in `manifest.json` and uses a persistent `background.js`.
-- The original background script recognizes media primarily through URL extensions and response MIME. It lists M3U8 MIME types, but maps `image/png` to images. It communicates with IDM through a localhost WebSocket or the `com.tonec.idm` native messaging host. Its video element inspection cannot reveal an HLS URL when playback uses `blob:` and MSE.
-- The extraction is for local inspection. The original package is proprietary; this project does not claim its code as open source. `extension/` is a separate implementation and does not contain copied IDM JavaScript.
+---
 
-## Added detection
+## 为什么做这个扩展
 
-Detection is fully generic and site-agnostic:
+很多人用过 IDM 的那枚浏览器扩展——它确实能嗅探网页里的流媒体，但**它必须搭配 IDM 本体**，而 IDM 是一款**付费**软件（试用期一过就得掏钱买授权）。
 
-- Ordinary HLS by `.m3u8` extension, common query parameters (`format=hls`, `url=...m3u8`, …), HLS response MIME types and playlist filenames.
-- **DASH manifests** by `.mpd` extension, query parameters (`format=mpd`, `type=dash`) and MIME (`application/dash+xml`, `video/vnd.mpeg.dash.mpd`). DASH is copy-only: Mediary downloads HLS, so the manifest URL can be copied but not launched.
-- Direct video files by extension/MIME: mp4, m4v, webm, mkv, mov, avi, flv, f4v, 3gp, 3g2, wmv, mpg, mpeg, m2ts, mts, vob, ogv, divx (plus the matching `video/*` MIME types). HLS/DASH *segments* (`.ts`, `.m4s`, `video/mp2t`) are deliberately not classified as standalone videos.
-- **DOM media sniffing**: the content script scans `video/audio/source/object/embed` elements for http(s) sources (blob:/data: skipped) and reports them, covering players that set `src` directly without an observable request.
-- **PNG-wrapped HLS by structural probe**: *any* request that redirects to a `.png` becomes a candidate; when the popup inspects it, the PNG is unwrapped and only kept if it actually carries a `roUd` chunk with an HLS manifest. Plain images (icons, sprites) fail verification and are dropped silently. No URL path patterns are involved.
+这个扩展把"嗅探"这一半单独拎了出来，对接的是**免费、开源**的 [Mediary](https://github.com/elementlo/stream-mediary)。也就是说：浏览器里负责发现链接，桌面端负责下载合并，全程不花钱、不弹购买提示。 sniff 到的链接也可以只复制、不下载，随你处置。
 
-### Optional rules (JSON import only)
+> 顺带一提：IDM 原版扩展是 Manifest V2，在当前 Chrome 上已经跑不起来了。本扩展是**完全独立的重写**，不含任何 IDM 的专有代码。
 
-Rules are an **extra filter** on top of generic detection, configurable only by importing a JSON file (popup → ⚙ → 导入 JSON; there is no editing form). The extension ships without any rules. When the current page's hostname matches one or more rules, only candidates passing those rules are kept; when no rule matches, generic detection passes everything. A rule can also reconstruct an entry URL for pages whose stream request cannot be observed at all:
+## 它能检测什么
+
+检测是**通用、站点中立**的，不针对任何具体网站：
+
+- **普通 HLS** — 按 `.m3u8` 后缀、常见查询参数（`format=hls` 等）、HLS 响应 MIME 识别。
+- **PNG 包装 HLS（`roUd`）** — 任何 302 跳转到 `.png` 的请求都是候选；弹窗检查时解包验证是否真的藏了 HLS 清单，普通图片（图标、雪碧图）会被静默丢弃。
+- **直链视频** — mp4 / webm / mkv / mov / avi / flv 等（按后缀与 MIME）。这类**只能复制链接**，因为 Mediary 下载的是 HLS 播放列表。
+- **DASH 清单** — `.mpd` / `application/dash+xml`，同样**只能复制**。
+- **DOM 媒体嗅探** — 扫描页面 `video/audio/source` 等元素的 http(s) 源，覆盖那些直接设 `src`、抓不到独立请求的播放器。
+
+> 局限：`blob:` / MSE 流无法嗅探（这一点和 IDM 原版一样）；`.ts` / `.m4s` 分片不会被当成独立视频，免得候选列表被刷屏。
+
+## 安装
+
+扩展尚未上架 Chrome 商店，用「加载已解压的扩展程序」方式安装：
+
+1. 克隆或下载本仓库，记住 `extension/` 目录的位置。
+2. 打开 `chrome://extensions`，右上角开启 **开发者模式**。
+3. 点 **加载已解压的扩展程序**，选择 `extension/` 目录。
+4. 安装并**至少启动一次** [Mediary](https://github.com/elementlo/stream-mediary/releases) 桌面版，让 `stream-mediary://` 协议完成注册。
+   - Windows：首次启动时写入当前用户注册表；
+   - macOS：由 `.app` bundle 注册。
+
+> Chrome 每次启动可能提示"停用开发者模式扩展"，点忽略/保留即可，这是未上架商店扩展的正常现象。
+
+## 使用
+
+1. 打开一个视频网页并播放，把鼠标**悬停在视频上**，画面会出现一个 **「视频链接」** 按钮（移开鼠标即消失）。也可以点浏览器工具栏的扩展图标打开弹窗。
+2. 按钮/弹窗会把检测到的每个流列成**卡片**，显示格式、清晰度（如 `1080p`）和估算大小，而**不是**直接甩一个地址给你。点卡片选中它。
+3. 选中后有两个动作：
+   - **复制链接** — 把该流的地址复制到剪贴板（任何类型都可用）。
+   - **Mediary 下载** — 仅 HLS / PNG 包装流可用，通过 `stream-mediary://` 深链唤起桌面 Mediary，并自动带上来源网页（Referer）与浏览器 UA。
+4. 如果桌面应用没装或没注册成功，「Mediary 下载」也会把地址一并复制到剪贴板，你可以手动粘贴到 Mediary 里。Chrome 可能仍会弹自己的"打开外部应用"确认框，属正常现象。
+
+> 签名 CDN 地址可能过期；某些站点要求浏览器专属鉴权，Mediary 的请求仍可能被拒。遇到这种情况，重新在页面上触发一次检测即可拿到新地址。
+
+## 可选：站点规则（JSON 导入）
+
+绝大多数站点靠上面的通用检测就够了。**规则是通用检测之上的额外筛选**，仅在某个站点需要特殊处理时才用，且只能通过导入 JSON 配置（弹窗 → ⚙ → 导入 JSON，没有编辑表单）。扩展本身**不内置任何规则**。
+
+- 当页面域名命中规则时，只保留 `urlFilter` 匹配的候选；没有规则命中则通用检测全放行。
+- 规则还能为"完全观察不到流请求"的页面构造一个 fallback 入口。
 
 ```json
 [{
@@ -33,31 +69,46 @@ Rules are an **extra filter** on top of generic detection, configurable only by 
 }]
 ```
 
-| Field | Required | Meaning |
+| 字段 | 必填 | 含义 |
 | --- | --- | --- |
-| `hostname` | yes | exact page hostname the rule applies to |
-| `urlFilter` | no | RegExp source; captured candidates on this host are kept only if their URL matches. Omit to keep everything on this host |
-| `pagePath` | with `entryPath` | RegExp source matched against the page pathname |
-| `entryPath` | no | entry pathname template (`$1..$n` = `pagePath` capture groups); used as a fallback candidate when nothing was captured |
-| `kind` | no | fallback kind: `wrapped-hls` (default) or `hls` |
+| `hostname` | 是 | 规则生效的页面域名（精确匹配） |
+| `urlFilter` | 否 | 正则源码；该域名下只有 URL 匹配的候选被保留，省略则全保留 |
+| `pagePath` | 与 `entryPath` 配对 | 正则源码，匹配页面 pathname |
+| `entryPath` | 否 | 入口路径模板，`$1..$n` 引用 `pagePath` 的分组；无候选时用于构造 fallback |
+| `kind` | 否 | fallback 类型：`wrapped-hls`（默认）或 `hls` |
 
-The file is a plain JSON array of rule objects; unknown fields are dropped and exact duplicates are merged at import. Invalid rules are rejected at import time with a reason. Rules are stored in `chrome.storage.local` and can be exported/cleared from the same panel.
+规则文件是一个 JSON 数组；导入时会校验（正则可编译、`$n` 有对应分组等），非法规则会被拒绝并给出原因。规则只存本机 `chrome.storage.local`，可在同一面板导出/清空。
 
-Chrome `webRequest` does not expose response bodies. When the extension captures a PNG redirect, it passes the signed PNG URL to Stream Mediary through the `stream-mediary://download` desktop protocol, avoiding another request to the HLS entry. If no redirect was captured, it passes the original HTTP(S) entry. It includes the page URL as `Referer` and the browser User-Agent. Mediary extracts `roUd` from PNG manifests, segments and keys, inherits the CDN signature for relative references, and merges the decoded media. No local proxy is needed. Source signatures can expire, and a site requiring browser-only authentication may still reject Mediary's requests. The implementation has been verified with a synthetic wrapped HLS server (see `demo/`).
+## 技术实现（简述）
 
-The popup expands a captured source into selectable specs: it fetches the playlist, unwraps PNG `roUd` payloads, resolves relative variant URIs with the inherited signature, and estimates each size. Card labels show the format and spec (for example `1080p`) plus the size; approximate sizes are prefixed with 约. No menu shows the download address. Clicking a card selects it; **复制链接** copies the address of the selection (variant playlist, signed PNG URL when captured, or direct media URL). **Mediary 下载** appears only for HLS and PNG-wrapped HLS selections and passes the same address through `stream-mediary://download`, also copying it for manual use; direct video files such as MP4 are copy-only because Mediary downloads HLS playlists. Neither form is necessarily an ordinary `.m3u8` URL for generic downloaders. The old `hls_proxy.py` remains available for those downloaders. Source signatures can expire, and a site requiring browser-only authentication may still reject Mediary's requests. The implementation has been verified with a synthetic wrapped HLS server, not a live Rou session.
+- 原生 ES modules，**无构建步骤、无框架**；改完在 `chrome://extensions` 手动刷新即可生效。
+- `background.js`（service worker）用 `webRequest` 监听捕获候选，按 tab 存 `chrome.storage.session`（MV3 worker 会被挂起，不能用内存 Map），导航/关标签即清空。
+- `detection.js` 负责通用 URL/MIME 分类与 PNG 重定向探测；`media-options.js` 抓取清单、解包 `roUd`、估算清晰度与大小；`launch.js` 构造 `stream-mediary://` 深链。
+- 隐私：候选只存会话级 storage，规则只存本机，**扩展不联系任何自建服务**。
 
-## Install and use
+目录结构、关键机制与开发约定的完整说明见 [`AGENTS.md`](AGENTS.md)。
 
-For a reproducible local playback test, run `python3 demo/server.py --port 8090` (requires ffmpeg) and open [the demo page](http://127.0.0.1:8090/v/demo) in Chrome. Click **加载并播放**, then use the extension's **在 Mediary 中下载** action. See [demo instructions](demo/README.md).
+## 本地演示
 
-1. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `extension/` directory.
-2. Install and launch the current Stream Mediary desktop build once so `stream-mediary://` is registered. On Windows, registration is written to the current user's registry at startup; on macOS, it comes from the app bundle's Info.plist.
-3. Play a video and move the mouse over it. A **视频链接** button appears over the video and disappears when the pointer leaves. Click it to open the menu; clicking outside closes the menu. The toolbar popup and the in-video menu show every selectable stream as a card with its spec and size instead of its address; click a card to select it, then use **复制链接**, or **Mediary 下载** when the selection is HLS or PNG-wrapped HLS. Direct video files such as MP4 offer **复制链接** only.
-4. If the desktop app is unavailable, the open action also copies the address it would pass to Mediary. Chrome may still display its own external-protocol prompt or missing-handler error; extensions cannot reliably detect desktop app installation. For PNG-wrapped streams, paste the copied address into the updated Mediary app. Signed source URLs may expire.
+想在一个可复现的环境里试一遍？仓库自带一个合成演示站：
 
-Chrome asks for access to HTTP/HTTPS sites because the stream host is not known in advance. The extension stores detected URLs in `chrome.storage.session`, per tab, and removes them when the tab navigates or closes. No local service is contacted by the extension.
+```bash
+python3 demo/server.py --port 8090   # 需要 ffmpeg
+```
 
-The extracted IDM package is Manifest V2 and cannot be relied on in current Chrome. This separate extension copies links on Windows and macOS; it does not download files through IDM or reproduce the proprietary IDM integration.
+然后在 Chrome 打开 <http://127.0.0.1:8090/v/demo>，点 **加载并播放**，再用扩展的 **Mediary 下载** 动作。详见 [demo 说明](demo/README.md)。
 
-Run `npm test` for extension tests. The optional legacy proxy has Python tests under `tests/`.
+## 测试
+
+```bash
+npm test                              # 扩展单测（node:test）
+python3 -m unittest tests.test_demo_server   # demo 服务器测试（可选）
+```
+
+## 关于 IDM 源码
+
+`source-crx/` 与 `legacy-source/` 是从公开镜像提取的 2021 版 IDM 集成模块 CRX，**仅用于本地研究对照**。原包为专有软件，本项目不主张其代码开源；`extension/` 是独立实现，不含任何复制自 IDM 的 JavaScript。
+
+## 免责声明
+
+本扩展与 Mediary 仅供个人、学习与合法用途。请自行确保拥有所下载内容的合法权利，勿用于侵犯版权或违反服务条款。DRM 保护的流不受支持。
