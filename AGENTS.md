@@ -12,7 +12,7 @@
   - PNG 包装 HLS（roUd）结构探测：任何 302 到 `.png` 的请求都是候选，弹窗检查时解包验证 `roUd` 块，普通图片静默丢弃
   - 视频页悬浮按钮（overlay）+ 工具栏弹窗（popup）双入口
   - 深链唤起桌面版 Mediary，携带 url / referer（来源网页）/ userAgent
-- **刻意排除**：`.ts`/`.m4s` 分片与 `video/mp2t` 不分类为独立视频（避免 HLS 分片刷屏候选列表）；blob:/MSE 流无法嗅探（与 IDM 原版相同的局限）
+- **刻意排除**：`.ts`/`.m4s` 分片与 `video/mp2t` 不分类为独立视频（避免 HLS 分片刷屏候选列表）；blob:/MSE 流无法嗅探
 - **测试**：`npm test`（node:test，30 个用例）；demo 服务器测试 `python3 -m unittest tests.test_demo_server`
 - **本地演示**：`python3 demo/server.py --port 8090`（需 ffmpeg），打开 `http://127.0.0.1:8090/v/demo`
 

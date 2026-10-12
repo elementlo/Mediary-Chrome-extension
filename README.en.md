@@ -26,7 +26,7 @@ Detection is **generic and site-agnostic** — it targets no specific website:
 - **DASH manifests** — `.mpd` / `application/dash+xml`, also **copy-only**.
 - **DOM media sniffing** — scans `video/audio/source` elements for http(s) sources, covering players that set `src` directly with no observable request.
 
-> Limitations: `blob:` / MSE streams cannot be sniffed (same as the original IDM); `.ts` / `.m4s` segments are not treated as standalone videos, so the candidate list stays clean.
+> Limitations: `blob:` / MSE streams cannot be sniffed; `.ts` / `.m4s` segments are not treated as standalone videos, so the candidate list stays clean.
 
 ## Install
 
@@ -104,10 +104,6 @@ Then open <http://127.0.0.1:8090/v/demo> in Chrome, click **Load & Play**, and u
 npm test                              # extension unit tests (node:test)
 python3 -m unittest tests.test_demo_server   # demo server tests (optional)
 ```
-
-## About the IDM source
-
-`source-crx/` and `legacy-source/` hold the 2021 IDM Integration Module CRX extracted from a public mirror, **for local research/comparison only**. The original package is proprietary; this project does not claim its code as open source. `extension/` is an independent implementation containing no JavaScript copied from IDM.
 
 ## Disclaimer
 

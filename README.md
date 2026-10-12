@@ -26,7 +26,7 @@
 - **DASH 清单** — `.mpd` / `application/dash+xml`，同样**只能复制**。
 - **DOM 媒体嗅探** — 扫描页面 `video/audio/source` 等元素的 http(s) 源，覆盖那些直接设 `src`、抓不到独立请求的播放器。
 
-> 局限：`blob:` / MSE 流无法嗅探（这一点和 IDM 原版一样）；`.ts` / `.m4s` 分片不会被当成独立视频，免得候选列表被刷屏。
+> 局限：`blob:` / MSE 流无法嗅探；`.ts` / `.m4s` 分片不会被当成独立视频，免得候选列表被刷屏。
 
 ## 安装
 
@@ -104,10 +104,6 @@ python3 demo/server.py --port 8090   # 需要 ffmpeg
 npm test                              # 扩展单测（node:test）
 python3 -m unittest tests.test_demo_server   # demo 服务器测试（可选）
 ```
-
-## 关于 IDM 源码
-
-`source-crx/` 与 `legacy-source/` 是从公开镜像提取的 2021 版 IDM 集成模块 CRX，**仅用于本地研究对照**。原包为专有软件，本项目不主张其代码开源；`extension/` 是独立实现，不含任何复制自 IDM 的 JavaScript。
 
 ## 免责声明
 
